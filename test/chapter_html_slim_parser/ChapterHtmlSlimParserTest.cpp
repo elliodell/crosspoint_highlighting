@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <filesystem>
@@ -51,6 +52,13 @@ void installSyntheticVariants(GfxRenderer& renderer) {
 
 class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
  protected:
+  struct ParagraphMarkers {
+    std::vector<std::string> words;
+    std::vector<std::string> clippingStarts;
+    std::vector<std::string> sourceStarts;
+    std::vector<uint8_t> focusBoundaries;
+    std::vector<uint16_t> focusSplitPositions;
+  };
   std::string filepath = "unused.xhtml";
   GfxRenderer renderer;
   CssParser cssParser{"/tmp"};
@@ -123,6 +131,62 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
     std::filesystem::remove(filepath);
     std::filesystem::remove(cachePath);
     return selected;
+  }
+
+  ParagraphMarkers parseSourceParagraphMarkers(const std::string& body, bool focus) {
+    const std::string html = "<html><body>" + body + "</body></html>";
+    const auto testId = std::to_string(std::hash<std::string>{}(html)) + (focus ? "-focus" : "-plain");
+    const auto base = std::filesystem::temp_directory_path() / ("crosspoint-source-paragraphs-" + testId);
+    filepath = base.string() + ".xhtml";
+    const auto cachePath = base.string() + ".bin";
+    {
+      HalFile file;
+      EXPECT_TRUE(file.open(filepath.c_str(), "wb"));
+      EXPECT_EQ(file.write(html.data(), html.size()), html.size());
+    }
+    ParagraphMarkers live;
+    ParagraphMarkers cached;
+    const auto inspect = [](const Page& page, ParagraphMarkers& markers) {
+      for (const auto& element : page.elements) {
+        if (element->getTag() != TAG_PageLine) continue;
+        const auto& block = *static_cast<const PageLine&>(*element).getBlock();
+        ASSERT_TRUE(block.valid());
+        for (uint16_t i = 0; i < block.wordCount(); ++i) {
+          if (!clippingText::hasVisibleText(block.wordText(i))) continue;
+          markers.words.emplace_back(block.wordText(i));
+          if (block.wordStartsParagraph(i)) markers.clippingStarts.emplace_back(block.wordText(i));
+          if (block.wordStartsSourceParagraph(i)) markers.sourceStarts.emplace_back(block.wordText(i));
+          markers.focusBoundaries.push_back(block.focusBoundary(i));
+          markers.focusSplitPositions.push_back(block.focusSplitX(i));
+        }
+      }
+    };
+    parser.completePageFn = [&](std::unique_ptr<Page> page, auto, auto, auto) {
+      ASSERT_NE(page, nullptr);
+      inspect(*page, live);
+      {
+        HalFile file;
+        ASSERT_TRUE(file.open(cachePath.c_str(), "wb"));
+        ASSERT_TRUE(page->serialize(file));
+      }
+      HalFile file;
+      ASSERT_TRUE(file.open(cachePath.c_str(), "rb"));
+      auto restored = Page::deserialize(file);
+      ASSERT_NE(restored, nullptr);
+      inspect(*restored, cached);
+      EXPECT_EQ(file.position(), file.size());
+    };
+    parser.paragraphIndentSpaces = 0;
+    parser.focusReadingEnabled = focus;
+    EXPECT_TRUE(parser.parseAndBuildPages());
+    EXPECT_EQ(cached.words, live.words);
+    EXPECT_EQ(cached.clippingStarts, live.clippingStarts);
+    EXPECT_EQ(cached.sourceStarts, live.sourceStarts);
+    EXPECT_EQ(cached.focusBoundaries, live.focusBoundaries);
+    EXPECT_EQ(cached.focusSplitPositions, live.focusSplitPositions);
+    std::filesystem::remove(filepath);
+    std::filesystem::remove(cachePath);
+    return cached;
   }
 };
 
@@ -2181,6 +2245,78 @@ INSTANTIATE_TEST_SUITE_P(ClippingBoundaries, ClippingParagraphTest,
                                            "<p>one</p><p>&#160;two</p>", "<p>one</p><p>&#8239;two</p>",
                                            "one<div>two</div>", "<div>one<div>two</div></div>",
                                            "<div>one<p>two</p></div>", "<div>one<h3>two</h3></div>"));
+
+TEST_F(ChapterHtmlSlimParserTest, InlineBreakKeepsOneSourceParagraphAndTwoClippingBoundaries) {
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers("<p>one<br/>two</p>", focus);
+    EXPECT_EQ(markers.words, (std::vector<std::string>{"one", "two"}));
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"one", "two"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"one"}));
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, LeadingAndConsecutiveBreaksKeepTheFirstSourceMarker) {
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers("<p><br/><br/>one<br/><br/>two</p>", focus);
+    EXPECT_EQ(markers.words, (std::vector<std::string>{"one", "two"}));
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"one", "two"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"one"}));
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, PreformattedNewlinesKeepOneSourceParagraph) {
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers("<pre>\none\n\ntwo</pre><p>three</p>", focus);
+    EXPECT_EQ(markers.words, (std::vector<std::string>{"one", "two", "three"}));
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"one", "two", "three"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"one", "three"}));
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, RealParagraphsStartAfterLineBreakContinuations) {
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers("<p>one<br/>two</p><p>three<br/>four</p>", focus);
+    EXPECT_EQ(markers.words, (std::vector<std::string>{"one", "two", "three", "four"}));
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"one", "two", "three", "four"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"one", "three"}));
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ListBulletKeepsItsSourceStartAcrossLeadingBreak) {
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers("<ul><li><br/>one<br/>two</li><li>three</li></ul>", focus);
+    EXPECT_EQ(markers.words, (std::vector<std::string>{"•", "one", "two", "•", "three"}));
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"•", "two", "•"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"•", "•"}));
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, SoftFlushedTextKeepsItsSourceParagraphAcrossBreak) {
+  std::string body = "<p>";
+  // Each side exceeds the parser's soft-flush threshold before its closing tag.
+  for (int i = 0; i < 800; ++i) body += "before ";
+  body += "<br/>";
+  for (int i = 0; i < 800; ++i) body += "after ";
+  body += "</p>";
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers(body, focus);
+    EXPECT_EQ(markers.words.size(), 1600u);
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"before", "after"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"before"}));
+  }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, SourceParagraphFlagsRoundTripWithFocusMetadata) {
+  for (const bool focus : {false, true}) {
+    const auto markers = parseSourceParagraphMarkers("<p>opening<br/>continuation</p>", focus);
+    EXPECT_EQ(markers.words, (std::vector<std::string>{"opening", "continuation"}));
+    EXPECT_EQ(markers.clippingStarts, (std::vector<std::string>{"opening", "continuation"}));
+    EXPECT_EQ(markers.sourceStarts, (std::vector<std::string>{"opening"}));
+    EXPECT_EQ(std::any_of(markers.focusBoundaries.begin(), markers.focusBoundaries.end(),
+                          [](uint8_t boundary) { return boundary != 0; }),
+              focus);
+  }
+}
 
 TEST(TextSpacingLayout, ParagraphMarkerSurvivesBidiAndOnlyMarksFirstExtractedLine) {
   GfxRenderer renderer;

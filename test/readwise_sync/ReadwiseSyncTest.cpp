@@ -77,6 +77,46 @@ void successfulUpload() {
   assert(fake::requests.size() == 1);
 }
 
+void completeParagraphUploads() {
+  for (int pageCount : {6, 64, 65}) {
+    reset();
+    JsonDocument source;
+    assert(!deserializeJson(source, capture()));
+    JsonArray pages = source["pages"].as<JsonArray>();
+    pages.clear();
+    for (int i = 1; i <= pageCount; ++i) {
+      auto page = pages.add<JsonObject>();
+      page["chapter"] = "Chapter";
+      page["page"] = i;
+      page["current"] = i == 3;
+      page["text"] = "Paragraph page " + std::to_string(i) + " & text.";
+    }
+    std::string data;
+    serializeJson(source, data);
+    assert(data.size() < MAX_SOURCE_BYTES);
+    fake::add(CAPTURE, data);
+    readwisesync::poll();
+    assert(Storage.exists(CAPTURE));
+    if (pageCount > 64) {
+      assert(fake::requests.empty() && !Storage.exists(MARKER));
+      continue;
+    }
+    assert(fake::requests.size() == 1 && alreadySent(ID));
+    JsonDocument request;
+    assert(!deserializeJson(request, fake::requests.front()));
+    const std::string html = request["html"];
+    size_t previousEnd = 0;
+    for (int i = 1; i <= pageCount; ++i) {
+      const std::string text = "Paragraph page " + std::to_string(i) + " &amp; text.";
+      const size_t position = html.find(text, previousEnd);
+      assert(position != std::string::npos);
+      previousEnd = position + text.size();
+    }
+    assert(html.find("page 3 (selected page)") != std::string::npos);
+    assert(request["title"] == "A & <book> — highlight, page 3");
+  }
+}
+
 void httpFailures() {
   for (int status : {301, 400, 401, 403, 429, 500, -1}) {
     reset();
@@ -174,6 +214,7 @@ void captureLimits() {
 
 int main() {
   successfulUpload();
+  completeParagraphUploads();
   httpFailures();
   interruptedWrites();
   unacknowledgedResponse();

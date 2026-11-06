@@ -90,6 +90,23 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 74
+
+Version 74 distinguishes a source paragraph from a hard line break used by
+clipping. The existing TextBlock focus byte becomes a flags byte: `0x01` means
+Focus Reading arrays are present, and `0x02` means the block continues the same
+source paragraph after a hard break. No bytes are added to the serialized
+layout. `paragraphStartWord` still marks the first logical word for clipping;
+`wordStartsSourceParagraph()` also checks the continuation flag before treating
+that word as the beginning of a paragraph.
+
+HTML `<br>` and preserved newlines within a paragraph retain their line breaks
+without creating paragraph boundaries for whole-paragraph captures. Completed
+and partial section caches from older versions rebuild automatically. The
+partial version remains derived from the final version
+(`0xFE - (74 - 28)`, or `0xD0`); the incomplete-write sentinel is unchanged.
+Book metadata and saved reading progress are kept.
+
 ### Version 73
 
 Version 73 keeps the binary layout and rebuilds completed and partial sections.

@@ -62,6 +62,7 @@ class TextBlock final : public Block {
   uint16_t paragraphStartWord = UINT16_MAX;  // Visual index of the paragraph's first logical word.
   uint16_t textBytes = 0;                    // total size of the text region, including NULs
   bool focusPresent = false;
+  bool sourceParagraphContinuation = false;
   bool isValid = true;
   // The ONLY allocation: makeUniqueNoThrow, so OOM yields an invalid block
   // instead of abort() (bare new is not nothrow with -fno-exceptions).
@@ -133,6 +134,10 @@ class TextBlock final : public Block {
   }
   SourceRange wordSourceRange(const uint16_t i) const { return sourceRanges[i]; }
   bool wordStartsParagraph(const uint16_t i) const { return i == paragraphStartWord; }
+  bool wordStartsSourceParagraph(const uint16_t i) const {
+    return wordStartsParagraph(i) && !sourceParagraphContinuation;
+  }
+  void setSourceParagraphContinuation(const bool continuation) { sourceParagraphContinuation = continuation; }
   int16_t wordXpos(const uint16_t i) const { return xposArr[i]; }
   EpdFontFamily::Style wordStyle(const uint16_t i) const {
     return static_cast<EpdFontFamily::Style>((stylesArr[i] & ~DISCRETIONARY_HYPHEN_FLAG) |

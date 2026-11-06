@@ -5,10 +5,10 @@ These instructions are for **X4 Pro (ESP32-S3)**. Do not use the X3/X4 ESP32-C3 
 ## Browser installation
 
 1. Back up the SD card, including the hidden `.crosspoint` folder, and charge the reader. Keep that backup outside the public source repository.
-2. Download `crosspoint-2.0.0-highlights.1-x4pro.bin` and `crosspoint-highlighting-sd-card.zip` from [this repository's Releases](https://github.com/elliodell/crosspoint_highlighting/releases). The release is experimental until you complete the device checks below.
+2. Download `crosspoint-2.0.0-highlights.2-x4pro.bin` and `crosspoint-highlighting-sd-card.zip` from [this repository's Releases](https://github.com/elliodell/crosspoint_highlighting/releases). The release is experimental until you complete the device checks below.
 3. Use a desktop browser with Web Serial support, such as Chrome or Edge. Connect the X4 Pro with a USB data cable.
 4. Open [CrossPoint's flash tools](https://crosspointreader.com/#flash-tools), select **X4 Pro**, choose **Custom .bin**, and select the downloaded firmware file. Follow the flasher's connection and completion prompts. Do not disconnect during flashing.
-5. Restart the reader. The version should contain `2.0.0-highlights.1` and `x4pro`.
+5. Restart the reader. The version should contain `2.0.0-highlights.2` and `x4pro`.
 6. Extract the SD-card ZIP. Copy its `plugins` folder to the SD-card root (merge with an existing `plugins` folder). The result must be `/plugins/almanac/manifest.json`, not `/sd-card/plugins/...`.
 7. Safely eject the card/USB Drive, then restart. Follow [Almanac setup](ALMANAC.md) and [Readwise setup](READWISE.md) if desired.
 8. Open a short EPUB, tap power once, and check `/Highlights` for matching text and JSON exports. Follow the [device checks](VERIFY.md) before relying on it for important captures.
@@ -18,6 +18,10 @@ The `.bin` is an application image. For a completely erased device or incompatib
 ## Update from an existing CrossPoint installation
 
 CrossPoint also supports installing a firmware file from the SD card through its firmware update flow. Use this fork's X4 Pro binary only; follow the prompts in Settings → System. Browser installation above is the most direct path if your current version's menu differs.
+
+Version `2.0.0-highlights.2` extends new captures to complete the outer paragraphs. Existing exports and Readwise setup still work; previously saved captures are not rewritten.
+
+This update rebuilds older completed and partially built page caches as chapters are opened. The first opening or capture can take longer while those pages are laid out again. Books, saved exports, settings, and reading progress are retained; there is no need to delete the hidden `.crosspoint` folder.
 
 Built-in internet update checks point to this fork. Experimental prereleases are not returned by GitHub's “latest stable release” endpoint, so install experimental builds from the release page. To return to official CrossPoint, use the [official flasher](https://crosspointreader.com/#flash-tools) and choose the normal X4 Pro release. Your exported files remain on the SD card.
 

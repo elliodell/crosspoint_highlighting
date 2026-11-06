@@ -1,8 +1,10 @@
 # Automatic Readwise Reader uploads
 
-This fork uploads each saved five-page highlight as a separate **excerpt document in your Reader Inbox**, tagged `crosspoint-highlight`. It includes the current page and up to two pages on each side, the book title and author, and a label on the selected page. At the beginning or end of a book there can be fewer pages. These are searchable Reader documents, not native yellow highlights attached to an existing Reader copy of the whole book.
+This fork uploads each saved highlight as a separate **excerpt document in your Reader Inbox**, tagged `crosspoint-highlight`. It includes the current page and up to two pages on each side, extended backward and forward as needed to include complete paragraphs at both ends. Additional outer pages contain only the necessary paragraph text. Paragraphs are never joined across chapter boundaries; book boundaries can leave fewer than five pages. The book title, author, and selected-page label are preserved. These are searchable Reader documents, not native yellow highlights attached to an existing Reader copy of the whole book.
 
 Saving a highlight always writes the local export first. Uploads use an existing Wi-Fi connection; saving a highlight does not turn on the radio. Your originals remain in `/Highlights` on the SD card after upload.
+
+Uploads include all saved text, including partial outer pages. The format accepts up to 64 rendered pages within the existing 96 KiB JSON limit; earlier five-page captures remain compatible. Captures that cannot include complete outer paragraphs within the capture limits fail locally and are not queued as truncated excerpts.
 
 ## One-time setup
 
@@ -46,7 +48,7 @@ Memory is allocated only for one cold-path upload: at most a 96 KiB source JSON 
 
 Before using this on your reading library, test with a short non-sensitive book:
 
-1. Save a highlight offline; confirm both local exports and their five-page content.
+1. Save a highlight offline with paragraphs spanning both outer page edges; confirm both local exports include the original five pages and the complete outer paragraphs. After joining Wi-Fi, compare all saved text with the Reader document, including any partial outer pages.
 2. Join Wi-Fi and check Reader for one correctly titled excerpt with all saved text.
 3. Reconnect and restart; confirm there is no duplicate.
 4. Interrupt Wi-Fi during an upload; reconnect and confirm eventual delivery with the local originals intact.

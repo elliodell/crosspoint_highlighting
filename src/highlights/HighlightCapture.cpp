@@ -19,9 +19,10 @@
 namespace {
 constexpr size_t MAX_FILE_BYTES = 96 * 1024;
 constexpr size_t MAX_PAGE_BYTES = 16 * 1024;
+constexpr int MAX_CAPTURE_PAGES = 64;
 constexpr unsigned long BUILD_TIMEOUT_MS = 30000;
 
-// Fixed buffers avoid retaining five pages of text or allocating a JSON document.
+// Fixed buffers avoid retaining captured text or allocating a JSON document.
 class ExportWriter {
   HalFile& file;
   char buffer[512];
@@ -77,13 +78,84 @@ class ExportWriter {
   }
 };
 
-bool writePageText(const Page& page, ExportWriter& json, ExportWriter& plain) {
+const char* visibleWord(const char* word) {
+  while (*word == ' ' || *word == '\t') ++word;
+  if (clippingText::hasEmSpacePrefix(word)) word += 3;
+  return word;
+}
+
+// PageLine belongs to one paragraph. Its marker may be at a nonzero visual word
+// index (RTL), while a drop cap precedes the first line of that same paragraph.
+struct ParagraphPage {
+  size_t firstText = SIZE_MAX;
+  size_t firstParagraph = SIZE_MAX;
+  size_t lastParagraph = SIZE_MAX;
+  uint32_t firstSource = UINT32_MAX;
+  uint32_t lastSourceEnd = UINT32_MAX;
+  bool sourceOrdered = true;
+
+  bool hasText() const { return firstText != SIZE_MAX; }
+  bool startsParagraph() const { return firstParagraph <= firstText; }
+};
+
+bool describePage(const Page& page, ParagraphPage& result) {
+  bool afterDropCap = false;
+  for (size_t index = 0; index < page.elements.size(); ++index) {
+    const auto& element = page.elements[index];
+    bool paragraph = false;
+    bool visible = false;
+    if (element->getTag() == TAG_PageDropCap) {
+      visible = clippingText::hasVisibleText(static_cast<const PageDropCap&>(*element).getText());
+      paragraph = visible;
+      afterDropCap = visible;
+    } else if (element->getTag() == TAG_PageLine) {
+      const auto* block = static_cast<const PageLine&>(*element).getBlock();
+      if (!block || !block->valid() || block->wordCount() > 4096) return false;
+      uint32_t first = UINT32_MAX;
+      uint32_t end = 0;
+      for (uint16_t word = 0; word < block->wordCount(); ++word) {
+        paragraph |= block->wordStartsSourceParagraph(word);
+        if (!clippingText::hasVisibleText(visibleWord(block->wordText(word)))) continue;
+        visible = true;
+        const auto source = block->wordSourceRange(word);
+        if (source.start == UINT32_MAX || source.end == UINT32_MAX) continue;
+        if (source.end < source.start) return false;
+        first = std::min(first, source.start);
+        end = std::max(end, source.end);
+      }
+      if (first != UINT32_MAX) {
+        // Interleaved table columns cannot be trimmed by paragraph in page order.
+        if (result.lastSourceEnd != UINT32_MAX && first < result.lastSourceEnd) result.sourceOrdered = false;
+        if (result.firstSource == UINT32_MAX) result.firstSource = first;
+        result.lastSourceEnd = end;
+      }
+      if (afterDropCap) paragraph = false;
+      if (visible) afterDropCap = false;
+    }
+    if (paragraph) {
+      if (result.firstParagraph == SIZE_MAX) result.firstParagraph = index;
+      result.lastParagraph = index;
+    }
+    if (visible && result.firstText == SIZE_MAX) result.firstText = index;
+  }
+  return true;
+}
+
+bool orderedPages(const ParagraphPage& earlier, const ParagraphPage& later) {
+  return earlier.sourceOrdered && later.sourceOrdered &&
+         (earlier.lastSourceEnd == UINT32_MAX || later.firstSource == UINT32_MAX ||
+          earlier.lastSourceEnd <= later.firstSource);
+}
+
+bool writePageText(const Page& page, size_t firstElement, size_t endElement, ExportWriter& json, ExportWriter& plain) {
+  endElement = std::min(endElement, page.elements.size());
   size_t bytes = 0;
   uint32_t previousEnd = UINT32_MAX;
   bool previousHyphen = false;
   bool afterDropCap = false;
   uint16_t maxWords = 0;
-  for (const auto& element : page.elements) {
+  for (size_t index = firstElement; index < endElement; ++index) {
+    const auto& element = page.elements[index];
     if (element->getTag() != TAG_PageLine) continue;
     const auto* block = static_cast<const PageLine&>(*element).getBlock();
     if (!block || !block->valid() || block->wordCount() > 4096) return false;
@@ -95,11 +167,18 @@ bool writePageText(const Page& page, ExportWriter& json, ExportWriter& plain) {
     LOG_ERR("HL", "OOM: %u word indices", maxWords);
     return false;
   }
-  for (const auto& element : page.elements) {
+  for (size_t index = firstElement; index < endElement; ++index) {
+    const auto& element = page.elements[index];
     if (element->getTag() == TAG_PageDropCap) {
       const char* text = static_cast<const PageDropCap&>(*element).getText();
       const size_t length = strlen(text);
-      if (bytes + length > MAX_PAGE_BYTES) return false;
+      if (!clippingText::hasVisibleText(text)) continue;
+      if (bytes + length + (bytes != 0) > MAX_PAGE_BYTES) return false;
+      if (bytes) {
+        json.escaped("\n", 1);
+        plain.put('\n');
+        ++bytes;
+      }
       json.escaped(text, length);
       plain.text(text);
       bytes += length;
@@ -127,9 +206,7 @@ bool writePageText(const Page& page, ExportWriter& json, ExportWriter& plain) {
     for (uint16_t n = 0; n < count; ++n) {
       const auto i = order[n];
       paragraph |= block->wordStartsParagraph(i);
-      const char* word = block->wordText(i);
-      while (*word == ' ' || *word == '\t') ++word;
-      if (clippingText::hasEmSpacePrefix(word)) word += 3;
+      const char* word = visibleWord(block->wordText(i));
       if (!clippingText::hasVisibleText(word)) continue;
       size_t length = strlen(word);
       const auto source = block->wordSourceRange(i);
@@ -200,6 +277,7 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
   };
   // -1 requests the chapter's tail; positive targets build only as far as needed.
   auto ensurePage = [&](Section& target, int page) {
+    if (millis() - started > BUILD_TIMEOUT_MS) return false;
     if (page >= 0 && page < target.pageCount) return true;
     // loadSectionFile() does not set isBuildComplete() for a finalized cache.
     if (target.isBuildComplete() || (!target.isBuilding() && !target.isPartial() && target.pageCount > 0)) return true;
@@ -254,6 +332,72 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
     positions[2 + n] = cursor;
     ++after;
   }
+  Position first = positions[2 - before];
+  Position last = positions[2 + after];
+  size_t firstElement = 0;
+  size_t endElement = SIZE_MAX;
+  int capturePages = before + after + 1;
+  auto describeAt = [&](const Position& position, ParagraphPage& description) {
+    if (millis() - started > BUILD_TIMEOUT_MS) return false;
+    Section* target = sectionAt(position.spine);
+    auto page = target ? target->loadPage(position.page) : nullptr;
+    return page && describePage(*page, description);
+  };
+
+  // Blank/image-only pages remain in the original window, but do not invent a
+  // paragraph boundary. Only extend within the chapter containing each edge.
+  ParagraphPage leftText;
+  ParagraphPage rightText;
+  int leftTextSpine = -1;
+  int rightTextSpine = -1;
+  for (int index = 2 - before; index <= 2 + after; ++index) {
+    ParagraphPage description;
+    if (!describeAt(positions[index], description)) return false;
+    if (!description.hasText()) continue;
+    if (!leftText.hasText()) {
+      leftText = description;
+      leftTextSpine = positions[index].spine;
+    }
+    rightText = description;
+    rightTextSpine = positions[index].spine;
+  }
+  if (leftTextSpine == first.spine && !leftText.sourceOrdered) return false;
+  if (leftTextSpine == first.spine && !leftText.startsParagraph()) {
+    while (first.page > 0) {
+      if (capturePages == MAX_CAPTURE_PAGES) return false;
+      --first.page;
+      ++capturePages;
+      ParagraphPage description;
+      if (!describeAt(first, description) || !orderedPages(description, leftText)) return false;
+      if (description.lastParagraph != SIZE_MAX) {
+        firstElement = description.lastParagraph;
+        break;
+      }
+      if (description.hasText()) leftText = description;
+    }
+  }
+  if (rightTextSpine == last.spine) {
+    if (!rightText.sourceOrdered) return false;
+    for (;;) {
+      Section* target = sectionAt(last.spine);
+      if (!target || !ensurePage(*target, last.page + 1)) return false;
+      if (last.page + 1 >= target->pageCount) break;
+      ParagraphPage description;
+      const Position next{last.spine, last.page + 1};
+      if (!describeAt(next, description) || !description.sourceOrdered) return false;
+      // The next page starts a fresh paragraph: none of its text is needed.
+      if (description.firstParagraph != SIZE_MAX && description.startsParagraph()) break;
+      if (!orderedPages(rightText, description) || capturePages == MAX_CAPTURE_PAGES) return false;
+      ++last.page;
+      ++capturePages;
+      if (description.firstParagraph != SIZE_MAX) {
+        endElement = description.firstParagraph;
+        break;
+      }
+      if (description.hasText()) rightText = description;
+    }
+  }
+
   if (!Storage.ensureDirectoryExists("/Highlights")) return false;
   char id[33];
   snprintf(id, sizeof(id), "%08lx%08lx%08lx%08lx", static_cast<unsigned long>(esp_random()),
@@ -290,14 +434,23 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
   json.text(",\"chapter\":");
   json.quoted(chapterTitle(*epub, spine));
   json.text(",\"page\":");
-  json.number(current.currentPage + 1);
+  json.number(positions[2].page + 1);
   json.text(",\"pages\":[");
   plain.text(epub->getTitle().c_str());
   plain.text(" — ");
   plain.text(epub->getAuthor().c_str());
   plain.text("\n\n");
-  for (int index = 2 - before; index <= 2 + after; ++index) {
-    const auto position = positions[index];
+  const int leftPages = positions[2 - before].page - first.page;
+  const int windowPages = before + after + 1;
+  for (int index = 0; index < capturePages; ++index) {
+    if (millis() - started > BUILD_TIMEOUT_MS) return false;
+    Position position;
+    if (index < leftPages)
+      position = {first.spine, first.page + index};
+    else if (index < leftPages + windowPages)
+      position = positions[2 - before + index - leftPages];
+    else
+      position = {last.spine, positions[2 + after].page + 1 + index - leftPages - windowPages};
     Section* target = sectionAt(position.spine);
     auto page = target ? target->loadPage(position.page) : nullptr;
     if (!page) {
@@ -305,25 +458,27 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
       return false;
     }
     const std::string chapter = chapterTitle(*epub, position.spine);
-    if (index != 2 - before) json.put(',');
+    const bool isCurrent = position.spine == positions[2].spine && position.page == positions[2].page;
+    if (index != 0) json.put(',');
     json.text("{\"chapter\":");
     json.quoted(chapter);
     json.text(",\"spine\":");
     json.number(position.spine);
     json.text(",\"page\":");
     json.number(position.page + 1);
-    json.text(index == 2 ? ",\"current\":true,\"text\":\"" : ",\"current\":false,\"text\":\"");
+    json.text(isCurrent ? ",\"current\":true,\"text\":\"" : ",\"current\":false,\"text\":\"");
     plain.text(chapter.c_str());
     plain.text(" — ");
     plain.text(tr(STR_HIGHLIGHT_PAGE_LABEL));
     plain.put(' ');
     plain.number(position.page + 1);
-    if (index == 2) {
+    if (isCurrent) {
       plain.put(' ');
       plain.text(tr(STR_HIGHLIGHT_CAPTURED_PAGE));
     }
     plain.put('\n');
-    if (!writePageText(*page, json, plain)) {
+    if (!writePageText(*page, index == 0 ? firstElement : 0, index == capturePages - 1 ? endElement : SIZE_MAX, json,
+                       plain)) {
       LOG_ERR("HL", "Highlight page exceeds text limit or cannot be decoded");
       return false;
     }
@@ -339,6 +494,6 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
     Storage.remove((base + ".txt").c_str());
     return false;
   }
-  LOG_INF("HL", "Saved %d pages as %s", before + after + 1, id);
+  LOG_INF("HL", "Saved %d pages as %s", capturePages, id);
   return true;
 }

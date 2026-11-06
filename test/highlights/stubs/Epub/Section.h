@@ -62,7 +62,9 @@ class Section {
   }
   bool buildSomeMore(int n) {
     if (!building) return false;
-    if (epub->failBuildStep || epub->cssOwner != this) {
+    const auto failAt = epub->failBuildAfterPages.find(spine);
+    if (epub->failBuildStep || epub->cssOwner != this ||
+        (failAt != epub->failBuildAfterPages.end() && builtPages >= failAt->second)) {
       abandonBuild();
       return false;
     }
@@ -93,10 +95,14 @@ class Section {
   }
   std::unique_ptr<Page> loadPage(int p) {
     const int onDisk = partial ? partialPages : (building ? 0 : pageCount);
-    if (epub->failLoad || p < 0 || (p >= onDisk && (!building || p >= builtPages))) return nullptr;
+    if (epub->failLoad || epub->failedLoads.contains({spine, p}) || p < 0 ||
+        (p >= onDisk && (!building || p >= builtPages)))
+      return nullptr;
+    const auto factory = epub->pageFactories.find({spine, p});
+    if (factory != epub->pageFactories.end()) return factory->second();
     auto page = std::make_unique<Page>();
     auto line = std::make_unique<PageLine>();
-    line->block.words.push_back({epub->chapters[spine][p], {0, 4}});
+    line->block.words.push_back({epub->chapters[spine][p], {0, 4}, false, true});
     page->elements.push_back(std::move(line));
     return page;
   }

@@ -22,6 +22,7 @@ constexpr char CONFIG_PATH[] = "/.crosspoint/readwise/config.json";
 constexpr char SENT_DIR[] = "/.crosspoint/readwise/sent";
 constexpr char API_URL[] = "https://readwise.io/api/v3/save/";
 constexpr size_t MAX_SOURCE_BYTES = 96 * 1024;
+constexpr size_t MAX_CAPTURE_PAGES = 64;
 constexpr size_t MAX_PAYLOAD_BYTES = 6 * MAX_SOURCE_BYTES + 4096;
 constexpr size_t MAX_CONFIG_BYTES = 1024;
 constexpr size_t MAX_RESPONSE_BYTES = 1024;
@@ -109,7 +110,7 @@ bool validCapture(JsonDocument& doc, const char* id) {
       doc["page"].as<unsigned>() == 0)
     return false;
   const JsonArrayConst pages = doc["pages"].as<JsonArrayConst>();
-  if (pages.isNull() || pages.size() == 0 || pages.size() > 5) return false;
+  if (pages.isNull() || pages.size() == 0 || pages.size() > MAX_CAPTURE_PAGES) return false;
   unsigned currentCount = 0;
   for (JsonObjectConst page : pages) {
     if (!validText(page["text"], 16 * 1024, true) || !validText(page["chapter"], 4096, true) ||

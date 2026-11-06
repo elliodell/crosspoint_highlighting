@@ -1,6 +1,9 @@
 #pragma once
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 struct ReaderRenderSpec {};
@@ -14,6 +17,7 @@ class TextBlock {
     SourceRange range;
     bool hyphen = false;
     bool paragraph = false;
+    bool sourceContinuation = false;
   };
   std::vector<Word> words;
   bool valid() const { return true; }
@@ -22,6 +26,7 @@ class TextBlock {
   SourceRange wordSourceRange(int i) const { return words[i].range; }
   bool wordHasDiscretionaryHyphen(int i) const { return words[i].hyphen; }
   bool wordStartsParagraph(int i) const { return words[i].paragraph; }
+  bool wordStartsSourceParagraph(int i) const { return words[i].paragraph && !words[i].sourceContinuation; }
 };
 enum { TAG_PageLine, TAG_PageDropCap };
 struct PageElement {
@@ -51,6 +56,9 @@ class Epub {
     bool partial = false;
   };
   std::vector<std::vector<std::string>> chapters;
+  std::map<std::pair<int, int>, std::function<std::unique_ptr<Page>()>> pageFactories;
+  std::set<std::pair<int, int>> failedLoads;
+  std::map<int, int> failBuildAfterPages;
   std::vector<Cache> caches;
   std::vector<int> buildStarts, suspensions;
   std::vector<std::string> events;

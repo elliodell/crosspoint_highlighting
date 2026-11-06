@@ -13,6 +13,12 @@
 #include "../../../../src/fontIds.h"
 #include "../CjkBreaks.h"
 
+namespace {
+constexpr uint8_t FOCUS_PRESENT_FLAG = 0x01;
+constexpr uint8_t SOURCE_PARAGRAPH_CONTINUATION_FLAG = 0x02;
+constexpr uint8_t KNOWN_FLAGS = FOCUS_PRESENT_FLAG | SOURCE_PARAGRAPH_CONTINUATION_FLAG;
+}  // namespace
+
 size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
   // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
   size_t size =
@@ -465,7 +471,9 @@ bool TextBlock::serialize(HalFile& file) const {
   // exactly the on-disk layout (see TextBlock.h), so one write covers all
   // per-word arrays and the text blob.
   serialization::writePod(file, numWords);
-  serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0));
+  const uint8_t flags =
+      (focusPresent ? FOCUS_PRESENT_FLAG : 0) | (sourceParagraphContinuation ? SOURCE_PARAGRAPH_CONTINUATION_FLAG : 0);
+  serialization::writePod(file, flags);
   serialization::writePod(file, textBytes);
   serialization::writePod(file, paragraphStartWord);
   if (numWords > 0) {
@@ -515,14 +523,18 @@ bool TextBlock::serialize(HalFile& file) const {
 
 std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   uint16_t wc;
-  uint8_t hasFocus;
+  uint8_t flags;
   uint16_t textBytes;
   uint16_t paragraphStartWord;
   serialization::readPod(file, wc);
-  serialization::readPod(file, hasFocus);
+  serialization::readPod(file, flags);
   serialization::readPod(file, textBytes);
   serialization::readPod(file, paragraphStartWord);
 
+  if (flags & ~KNOWN_FLAGS) {
+    LOG_ERR("TXB", "Deserialization failed: unknown flags %u", flags);
+    return nullptr;
+  }
   // Sanity checks: cap the arena allocation and reject impossible geometry
   // (every word carries at least its NUL terminator).
   if (wc > 10000 || (paragraphStartWord != UINT16_MAX && paragraphStartWord >= wc)) {
@@ -542,7 +554,8 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   block->numWords = wc;
   block->textBytes = textBytes;
   block->paragraphStartWord = paragraphStartWord;
-  block->focusPresent = hasFocus != 0;
+  block->focusPresent = (flags & FOCUS_PRESENT_FLAG) != 0;
+  block->sourceParagraphContinuation = (flags & SOURCE_PARAGRAPH_CONTINUATION_FLAG) != 0;
 
   if (wc > 0) {
     const size_t size = arenaSize(wc, block->focusPresent, textBytes);

@@ -764,11 +764,16 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
 
 void ChapterHtmlSlimParser::breakTextLine(const BlockStyle& style) {
   const bool hasText = currentTextBlock && !currentTextBlock->isEmpty();
+  const bool sourceParagraphStarted = currentTextBlock && currentTextBlock->hasSourceParagraphContent();
   if (!hasText && currentPage && !currentPage->elements.empty()) {
     const int lineHeight = renderer.getLineHeight(fontId, lineCompression);
     currentPageNextY = static_cast<int16_t>(std::min<int>(viewportHeight, currentPageNextY + lineHeight));
   }
   startNewTextBlock(style, false);
+  // A bullet-only block may be reused without emitting a line; its first marker stays intact.
+  if (currentTextBlock && currentTextBlock->isEmpty()) {
+    currentTextBlock->setSourceParagraphContinuation(sourceParagraphStarted);
+  }
   if (currentTextBlock && (hasText || effectivePreserveWhitespace)) currentTextBlock->suppressFirstLineIndent();
 }
 

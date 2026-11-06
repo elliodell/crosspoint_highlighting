@@ -1892,6 +1892,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       droppedWords = true;
       return;
     }
+    block->setSourceParagraphContinuation(continuesSourceParagraph);
     processLine(std::move(block), lineVisibleOffset);
     return;
   }
@@ -1923,5 +1924,6 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     droppedWords = true;  // see the non-focus branch above
     return;
   }
+  block->setSourceParagraphContinuation(continuesSourceParagraph);
   processLine(std::move(block), lineVisibleOffset);
 }

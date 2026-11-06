@@ -99,6 +99,8 @@ class ParsedText {
   // Separate from firstLineConsumed: a <br> line suppresses the indent but still starts a
   // new clipping paragraph.
   bool paragraphStartEmitted = false;
+  // A forced line break keeps the enclosing source paragraph intact.
+  bool continuesSourceParagraph = false;
   std::vector<std::string> reorderedWordsScratch;
   std::vector<EpdFontFamily::Style> reorderedStylesScratch;
   std::vector<uint16_t> reorderedWidthsScratch;
@@ -163,7 +165,9 @@ class ParsedText {
   std::string getRubyTextAt(size_t index) const { return index < rubyTexts.size() ? rubyTexts[index] : std::string(); }
   void ensureRubyCapacity();
   void suppressFirstLineIndent() { firstLineConsumed = true; }
-  void resetFirstLineIndent() { firstLineConsumed = paragraphStartEmitted = false; }
+  void resetFirstLineIndent() { firstLineConsumed = paragraphStartEmitted = continuesSourceParagraph = false; }
+  void setSourceParagraphContinuation(const bool continuation) { continuesSourceParagraph = continuation; }
+  bool hasSourceParagraphContent() const { return continuesSourceParagraph || paragraphStartEmitted || !words.empty(); }
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
