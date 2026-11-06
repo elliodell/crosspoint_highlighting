@@ -53,11 +53,12 @@ void pageLayout(const std::shared_ptr<Epub>& book, int spine, int page, std::vec
     return result;
   };
 }
-std::vector<std::string> pageTexts(const std::string& json) {
+std::vector<std::string> pageValues(const std::string& json, const std::string& key) {
+  const std::string prefix = "\"" + key + "\":\"";
   std::vector<std::string> result;
   size_t offset = 0;
-  while ((offset = json.find("\"text\":\"", offset)) != std::string::npos) {
-    offset += 8;
+  while ((offset = json.find(prefix, offset)) != std::string::npos) {
+    offset += prefix.size();
     const size_t start = offset;
     while (offset < json.size() && json[offset] != '"') {
       if (json[offset] == '\\') ++offset;
@@ -69,6 +70,16 @@ std::vector<std::string> pageTexts(const std::string& json) {
   }
   return result;
 }
+std::vector<std::string> pageTexts(const std::string& json) { return pageValues(json, "text"); }
+std::string joinedCapture(const std::string& json) {
+  assert(json.find("\"text_format\":2") != std::string::npos);
+  const auto texts = pageTexts(json);
+  const auto joiners = pageValues(json, "joiner");
+  assert(texts.size() == joiners.size());
+  std::string joined;
+  for (size_t i = 0; i < texts.size(); ++i) joined += joiners[i] + texts[i];
+  return joined;
+}
 std::shared_ptr<Epub> paragraphBook(int count) {
   std::vector<std::string> pages;
   for (int page = 0; page < count; ++page) pages.push_back("page" + std::to_string(page));
@@ -77,6 +88,50 @@ std::shared_ptr<Epub> paragraphBook(int count) {
     pageLayout(book, 0, page, {line(pages[page], page * 100, page == 0)});
   }
   return book;
+}
+void textFlowTests(GfxRenderer& renderer, const ReaderRenderSpec& spec) {
+  struct Scenario {
+    ElementSpec first;
+    ElementSpec second;
+    std::string expected;
+  };
+  const std::vector<Scenario> scenarios = {
+      {line("first", 0, true), line("second", 6, false), "first second"},
+      {line("para", 0, true), line("graph", 4, false), "paragraph"},
+      {{{{"para-", {0, 4}, true, true}}, ""}, line("graph", 4, false), "paragraph"},
+      {line("well-", 0, true), line("being", 5, false), "well-being"},
+      {line("世", 0, true), line("界", 3, false), "世界"},
+      {line("first", 0, true), line("second", 6, true),
+       "first\xe2\x80\xa9"
+       "second"},
+      {line("first", 0, true), line("second", 6, true, true), "first\\u000asecond"},
+      {cap("T"), line("he", 1, true), "The"},
+  };
+  for (const auto& scenario : scenarios) {
+    for (bool blank : {false, true}) {
+      fake::reset();
+      auto book = makeBook(
+          {blank ? std::vector<std::string>{"first", "image", "second"} : std::vector<std::string>{"first", "second"}});
+      pageLayout(book, 0, 0, {scenario.first});
+      if (blank) pageLayout(book, 0, 1, {});
+      pageLayout(book, 0, blank ? 2 : 1, {scenario.second});
+      Section current(book, 0, renderer);
+      assert(current.loadSectionFile(spec));
+      current.currentPage = 0;
+      assert(highlights::capture(book, current, 0, renderer, spec));
+      assert(joinedCapture(exported(".json")) == scenario.expected);
+    }
+  }
+  fake::reset();
+  auto book = makeBook({{"first"}, {"second"}});
+  pageLayout(book, 0, 0, {line("first", 0, true)});
+  pageLayout(book, 1, 0, {line("second", 0, false)});
+  Section current(book, 0, renderer);
+  assert(current.loadSectionFile(spec));
+  assert(highlights::capture(book, current, 0, renderer, spec));
+  assert(joinedCapture(exported(".json")) ==
+         "first\xe2\x80\xa9"
+         "second");
 }
 void paragraphCaptureTests(GfxRenderer& renderer, const ReaderRenderSpec& spec) {
   {
@@ -95,6 +150,8 @@ void paragraphCaptureTests(GfxRenderer& renderer, const ReaderRenderSpec& spec) 
     assert(
         (pageTexts(exported(".json")) == std::vector<std::string>{"start", "left-break", "left-edge", "page3", "page4",
                                                                   "page5", "right-edge", "right-break", "end"}));
+    assert(joinedCapture(exported(".json")) ==
+           "start\\u000aleft-break\\u000aleft-edge page3 page4 page5\\u000aright-edge\\u000aright-break end");
     assert(exported(".txt").find("unrelated") == std::string::npos);
     assert(current.currentPage == 4);
     assertOneBuilder(*book);
@@ -165,10 +222,12 @@ void paragraphCaptureTests(GfxRenderer& renderer, const ReaderRenderSpec& spec) 
     const auto texts = pageTexts(exported(".json"));
     assert(texts.size() == 8);
     assert(texts.front() == "The start");
-    assert(texts[4] == "old\\u000aNew");
-    assert(texts[5] == "first\\u000abegin second");
+    assert(texts[4] == "old\xe2\x80\xa9New");
+    assert(texts[5] ==
+           "first\xe2\x80\xa9"
+           "begin second");
     assert(texts.back() == "right-end");
-    assert(exported(".txt").find("first\nbegin second") != std::string::npos);
+    assert(exported(".txt").find("first\n\nbegin second") != std::string::npos);
     assert(exported(".txt").find("unrelated") == std::string::npos);
     assert(exported(".txt").find("Xcluded") == std::string::npos);
     assert(current.currentPage == 4);
@@ -294,8 +353,8 @@ int main() {
     assert(highlights::capture(book, section, 1, renderer, spec));
     const auto json = exported(".json");
     assert(json.find("before2") < json.find("before1"));
-    assert(json.find("before1") < json.find("current\"}"));
-    assert(json.find("current\"}") < json.find("after1"));
+    assert(json.find("before1") < json.find("\"text\":\"current\""));
+    assert(json.find("\"text\":\"current\"") < json.find("after1"));
     assert(json.find("after1") < json.find("after2"));
     assert(json.find("A \\\"book\\\"") != std::string::npos);
     assert(json.find("\"current\":true") != std::string::npos);
@@ -440,6 +499,7 @@ int main() {
   assert(!highlights::capture(book, partial, 0, renderer, spec));
   noExports();
   paragraphCaptureTests(renderer, spec);
+  textFlowTests(renderer, spec);
   std::cout
       << "Highlight capture: page windows, whole paragraphs, cache lifecycle, exclusive builders, failures passed\n";
 }

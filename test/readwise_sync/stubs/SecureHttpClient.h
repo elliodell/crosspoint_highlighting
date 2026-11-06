@@ -6,12 +6,12 @@
 #include <vector>
 namespace fake {
 inline std::vector<std::string> requests;
-inline int httpStatus = 201;
+inline int httpStatus = 200;
 inline bool responseComplete = true;
 inline bool expireRequest = false;
 inline bool verified = false;
 inline bool requestAborted = false;
-inline std::string response = "{\"id\":\"reader123\"}";
+inline std::string response = "[{\"id\":123,\"modified_highlights\":[456]}]";
 inline std::string retryAfter;
 inline std::string authorization;
 }  // namespace fake
@@ -23,7 +23,7 @@ class SecureHttpClient {
   void setReuse(bool) {}
   void setUserAgent(const char*) {}
   bool begin(const std::string& url) {
-    assert(url == "https://readwise.io/api/v3/save/");
+    assert(url == "https://readwise.io/api/v2/highlights/");
     return true;
   }
   void addHeader(const std::string& name, const std::string& value) {

@@ -147,12 +147,45 @@ bool orderedPages(const ParagraphPage& earlier, const ParagraphPage& later) {
           earlier.lastSourceEnd <= later.firstSource);
 }
 
-bool writePageText(const Page& page, size_t firstElement, size_t endElement, ExportWriter& json, ExportWriter& plain) {
-  endElement = std::min(endElement, page.elements.size());
-  size_t bytes = 0;
+constexpr char PARAGRAPH_BREAK[] = "\xe2\x80\xa9";
+
+struct TextFlow {
   uint32_t previousEnd = UINT32_MAX;
+  int spine = -1;
+  unsigned pendingBreak = 0;
+  bool hasText = false;
   bool previousHyphen = false;
   bool afterDropCap = false;
+};
+
+bool writePageText(const Page& page, size_t firstElement, size_t endElement, int spine, TextFlow& flow,
+                   char (&joiner)[4], ExportWriter& json, ExportWriter& plain) {
+  endElement = std::min(endElement, page.elements.size());
+  size_t bytes = 0;
+  joiner[0] = '\0';
+  if (flow.hasText && flow.spine != spine) {
+    flow.previousEnd = UINT32_MAX;
+    flow.previousHyphen = false;
+    flow.afterDropCap = false;
+    flow.pendingBreak = 2;
+  }
+  auto emit = [&](const char* text, size_t length, const char* separator) {
+    const size_t gap = strlen(separator);
+    if (bytes + length + (bytes ? gap : 0) > MAX_PAGE_BYTES) return false;
+    if (!bytes) {
+      memcpy(joiner, separator, gap + 1);
+    } else if (gap) {
+      json.escaped(separator, gap);
+      plain.text(strcmp(separator, PARAGRAPH_BREAK) == 0 ? "\n\n" : separator);
+      bytes += gap;
+    }
+    json.escaped(text, length);
+    for (size_t j = 0; j < length; ++j) plain.put(text[j]);
+    bytes += length;
+    flow.hasText = true;
+    flow.spine = spine;
+    return true;
+  };
   uint16_t maxWords = 0;
   for (size_t index = firstElement; index < endElement; ++index) {
     const auto& element = page.elements[index];
@@ -161,7 +194,6 @@ bool writePageText(const Page& page, size_t firstElement, size_t endElement, Exp
     if (!block || !block->valid() || block->wordCount() > 4096) return false;
     maxWords = std::max(maxWords, block->wordCount());
   }
-  // At most 8 KB, reused across this page's lines and released before the next page.
   auto order = makeUniqueNoThrow<uint16_t[]>(std::max<uint16_t>(maxWords, 1));
   if (!order) {
     LOG_ERR("HL", "OOM: %u word indices", maxWords);
@@ -171,18 +203,12 @@ bool writePageText(const Page& page, size_t firstElement, size_t endElement, Exp
     const auto& element = page.elements[index];
     if (element->getTag() == TAG_PageDropCap) {
       const char* text = static_cast<const PageDropCap&>(*element).getText();
-      const size_t length = strlen(text);
       if (!clippingText::hasVisibleText(text)) continue;
-      if (bytes + length + (bytes != 0) > MAX_PAGE_BYTES) return false;
-      if (bytes) {
-        json.escaped("\n", 1);
-        plain.put('\n');
-        ++bytes;
-      }
-      json.escaped(text, length);
-      plain.text(text);
-      bytes += length;
-      afterDropCap = true;
+      if (!emit(text, strlen(text), flow.hasText ? PARAGRAPH_BREAK : "")) return false;
+      flow.afterDropCap = true;
+      flow.previousEnd = UINT32_MAX;
+      flow.previousHyphen = false;
+      flow.pendingBreak = 0;
       continue;
     }
     if (element->getTag() != TAG_PageLine) continue;
@@ -191,9 +217,14 @@ bool writePageText(const Page& page, size_t firstElement, size_t endElement, Exp
     const auto count = block->wordCount();
     if (count == 0) continue;
     bool known = true;
+    // The paragraph marker can be at a nonzero visual word index in RTL text.
     for (uint16_t i = 0; i < count; ++i) {
       order[i] = i;
       known &= block->wordSourceRange(i).start != UINT32_MAX;
+      if (block->wordStartsSourceParagraph(i))
+        flow.pendingBreak = 2;
+      else if (block->wordStartsParagraph(i))
+        flow.pendingBreak = std::max(flow.pendingBreak, 1U);
     }
     if (known) {
       std::sort(order.get(), order.get() + count, [block](uint16_t a, uint16_t b) {
@@ -202,38 +233,30 @@ bool writePageText(const Page& page, size_t firstElement, size_t endElement, Exp
         return sa == sb ? a < b : sa < sb;
       });
     }
-    bool paragraph = false;
     for (uint16_t n = 0; n < count; ++n) {
       const auto i = order[n];
-      paragraph |= block->wordStartsParagraph(i);
       const char* word = visibleWord(block->wordText(i));
       if (!clippingText::hasVisibleText(word)) continue;
       size_t length = strlen(word);
       const auto source = block->wordSourceRange(i);
       const bool hyphen = block->wordHasDiscretionaryHyphen(i);
       if (hyphen && length && word[length - 1] == '-') --length;
-      char separator = '\0';
-      if (bytes && !afterDropCap) {
-        if (paragraph)
-          separator = '\n';
-        else if (previousEnd != UINT32_MAX && source.start != UINT32_MAX) {
-          if (source.start > previousEnd) separator = ' ';
-        } else if (!previousHyphen)
-          separator = ' ';
+      const char* separator = "";
+      if (flow.hasText && !flow.afterDropCap) {
+        if (flow.pendingBreak == 2)
+          separator = PARAGRAPH_BREAK;
+        else if (flow.pendingBreak == 1)
+          separator = "\n";
+        else if (flow.previousEnd != UINT32_MAX && source.start != UINT32_MAX) {
+          if (source.start > flow.previousEnd) separator = " ";
+        } else if (!flow.previousHyphen)
+          separator = " ";
       }
-      if (bytes + length + (separator != '\0') > MAX_PAGE_BYTES) return false;
-      if (separator) {
-        json.escaped(&separator, 1);
-        plain.put(separator);
-        ++bytes;
-      }
-      json.escaped(word, length);
-      for (size_t j = 0; j < length; ++j) plain.put(word[j]);
-      bytes += length;
-      previousEnd = source.end;
-      previousHyphen = hyphen;
-      afterDropCap = false;
-      paragraph = false;
+      if (!emit(word, length, separator)) return false;
+      flow.previousEnd = source.end;
+      flow.previousHyphen = hyphen;
+      flow.afterDropCap = false;
+      flow.pendingBreak = 0;
     }
   }
   return true;
@@ -423,7 +446,7 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
   }
   auto& json = *jsonWriter;
   auto& plain = *textWriter;
-  json.text("{\"id\":");
+  json.text("{\"text_format\":2,\"id\":");
   json.quoted(id);
   json.text(",\"book_title\":");
   json.quoted(epub->getTitle());
@@ -442,6 +465,7 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
   plain.text("\n\n");
   const int leftPages = positions[2 - before].page - first.page;
   const int windowPages = before + after + 1;
+  TextFlow textFlow;
   for (int index = 0; index < capturePages; ++index) {
     if (millis() - started > BUILD_TIMEOUT_MS) return false;
     Position position;
@@ -477,11 +501,14 @@ bool highlights::capture(const std::shared_ptr<Epub>& epub, Section& current, co
       plain.text(tr(STR_HIGHLIGHT_CAPTURED_PAGE));
     }
     plain.put('\n');
-    if (!writePageText(*page, index == 0 ? firstElement : 0, index == capturePages - 1 ? endElement : SIZE_MAX, json,
-                       plain)) {
+    char joiner[4];
+    if (!writePageText(*page, index == 0 ? firstElement : 0, index == capturePages - 1 ? endElement : SIZE_MAX,
+                       position.spine, textFlow, joiner, json, plain)) {
       LOG_ERR("HL", "Highlight page exceeds text limit or cannot be decoded");
       return false;
     }
+    json.text("\",\"joiner\":\"");
+    json.escaped(joiner, strlen(joiner));
     json.text("\"}");
     plain.text("\n\n");
   }
