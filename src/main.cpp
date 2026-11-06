@@ -45,6 +45,7 @@
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "highlights/ReadwiseSync.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/PluginEvents.h"
@@ -74,6 +75,12 @@ static unsigned long lastX4ProPowerClickAt = 0;
 namespace {
 constexpr unsigned long X4PRO_POWER_DOUBLE_CLICK_MS = 500;
 constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
+constexpr unsigned long POWER_HIGHLIGHT_SLEEP_HOLD_MS = 400;
+
+enum class PowerHighlightGesture { Idle, Held, AwaitingSecondClick, SecondHeld, CanceledHeld };
+PowerHighlightGesture powerHighlightGesture = PowerHighlightGesture::Idle;
+uint32_t powerHighlightVisit = 0;
+unsigned long powerHighlightClickAt = 0;
 }  // namespace
 
 // A wake hold must never become an in-app power-button action.  Boot may continue
@@ -273,6 +280,68 @@ bool handleX4ProFrontlightDoubleClick() {
   return true;
 }
 
+bool handlePowerHighlight(const bool supported, const bool otherInput) {
+  const bool wasOwned = powerHighlightGesture != PowerHighlightGesture::Idle;
+  const bool pressed = gpio.isPressed(HalGPIO::BTN_POWER);
+  const bool released = gpio.wasReleased(HalGPIO::BTN_POWER);
+  const unsigned long now = millis();
+
+  // A delayed click must not capture a page reached by another gesture.
+  if (wasOwned && (otherInput || powerHighlightVisit != activityManager.visit() ||
+                   (powerHighlightGesture == PowerHighlightGesture::AwaitingSecondClick && !supported))) {
+    powerHighlightGesture = pressed ? PowerHighlightGesture::CanceledHeld : PowerHighlightGesture::Idle;
+    if (released) return true;
+  }
+
+  if (powerHighlightGesture == PowerHighlightGesture::Idle && supported && !otherInput &&
+      (gpio.wasPressed(HalGPIO::BTN_POWER) || released)) {
+    powerHighlightGesture = PowerHighlightGesture::Held;
+    powerHighlightVisit = activityManager.visit();
+    lastX4ProPowerClickAt = 0;
+  }
+
+  const bool doubleClickLight = BoardConfig::isX4Pro() && SETTINGS.doubleClickPwrLight;
+  switch (powerHighlightGesture) {
+    case PowerHighlightGesture::Idle:
+      return false;
+    case PowerHighlightGesture::CanceledHeld:
+      if (!pressed) powerHighlightGesture = PowerHighlightGesture::Idle;
+      return released;
+    case PowerHighlightGesture::AwaitingSecondClick:
+      if (gpio.wasPressed(HalGPIO::BTN_POWER)) {
+        powerHighlightGesture = PowerHighlightGesture::SecondHeld;
+        return false;
+      }
+      if (doubleClickLight && now - powerHighlightClickAt <= X4PRO_POWER_DOUBLE_CLICK_MS) return false;
+      powerHighlightGesture = PowerHighlightGesture::Idle;
+      activityManager.capturePowerHighlight();
+      return true;
+    case PowerHighlightGesture::Held:
+    case PowerHighlightGesture::SecondHeld:
+      if (!released) return false;
+      break;
+  }
+
+  const bool secondClick = powerHighlightGesture == PowerHighlightGesture::SecondHeld;
+  powerHighlightGesture = PowerHighlightGesture::Idle;
+  if (gpio.getPowerButtonHeldTime() > POWER_HIGHLIGHT_SLEEP_HOLD_MS) return true;
+
+  if (doubleClickLight && gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS) {
+    if (secondClick && now - powerHighlightClickAt <= X4PRO_POWER_DOUBLE_CLICK_MS) {
+      toggleFrontlight();
+      return true;
+    }
+    if (!secondClick) {
+      powerHighlightGesture = PowerHighlightGesture::AwaitingSecondClick;
+      powerHighlightClickAt = now;
+      return true;
+    }
+  }
+
+  activityManager.capturePowerHighlight();
+  return true;
+}
+
 // Bluetooth page turner (lib/BlePageTurner): what the module may ask of this firmware. The module
 // owns the radio; loop() tells it what is on screen, and the screen changes and sleep ask it to stop.
 namespace pageturner {
@@ -401,6 +470,7 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
   if (!allowNetwork) return;
   if (WiFi.status() == WL_CONNECTED) {
     pluginevents::drain(&renderer);
+    readwisesync::poll();
     return;
   }
   // Any connect-flagged queued event justifies the join, not only
@@ -423,6 +493,7 @@ static void deliverSleepPluginEvents(const bool allowNetwork) {
   if (WiFi.status() == WL_CONNECTED) {
     trustedtime::startSync();  // snap the clock floor while the network is up
     pluginevents::drain(&renderer);
+    readwisesync::poll();
   } else {
     LOG_DBG("MAIN", "Sleep-event WiFi join timed out; deferring delivery");
   }
@@ -851,8 +922,14 @@ void loop() {
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
 
-  gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
+  const bool powerHighlightSupported = activityManager.supportsPowerHighlight();
+  gpio.setSharedConfirmPowerShortPressEmitsPower(powerHighlightSupported ||
+                                                 powerHighlightGesture != PowerHighlightGesture::Idle ||
+                                                 SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
+#if FREEINK_CAP_TOUCH
+  mappedInputManager.setPowerConfirmClickFrame(false);
+#endif
 
   // Bluetooth page turner, before the USB drive's early return: a card handed to USB stops the radio
   // before anything else.
@@ -870,6 +947,8 @@ void loop() {
   const bool remoteActed = bleturner::tick(scene);
 
   if (activityManager.requiresExclusiveStorageLoop()) {
+    powerHighlightGesture = PowerHighlightGesture::Idle;
+    lastX4ProPowerClickAt = 0;
     // USB Drive handed the raw SD card to the host. Do not run screenshots,
     // sleep, shortcuts, or normal navigation while its filesystem is detached.
     activityManager.loop();
@@ -941,12 +1020,16 @@ void loop() {
   // a page turn, refresh, or other short power-button action.
   if (wakePowerReleasePending && !gpio.isPressed(HalGPIO::BTN_POWER)) {
     wakePowerReleasePending = false;
+    powerHighlightGesture = PowerHighlightGesture::Idle;
+    lastX4ProPowerClickAt = 0;
     return;
   }
 
   static bool screenshotButtonsReleased = true;
   static bool screenshotComboActive = false;
   if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.isPressed(HalGPIO::BTN_DOWN)) {
+    powerHighlightGesture = PowerHighlightGesture::Idle;
+    lastX4ProPowerClickAt = 0;
     screenshotComboActive = true;
     if (screenshotButtonsReleased) {
       screenshotButtonsReleased = false;
@@ -968,6 +1051,12 @@ void loop() {
     screenshotComboActive = false;
   }
 
+  bool otherHighlightInput = gpio.wasTouchActivity() || halTiltSensor.hadActivity() || remoteActed;
+  for (uint8_t button = HalGPIO::BTN_BACK; button < HalGPIO::BTN_POWER; ++button) {
+    otherHighlightInput |= gpio.isPressed(button) || gpio.wasPressed(button) || gpio.wasReleased(button);
+  }
+  if (!wakePowerReleasePending && handlePowerHighlight(powerHighlightSupported, otherHighlightInput)) return;
+
   // Consume the second X4 Pro power-button release so it does not also run a
   // configured short-power action after toggling the frontlight.
   if (handleX4ProFrontlightDoubleClick()) {
@@ -979,7 +1068,6 @@ void loop() {
 #if FREEINK_CAP_TOUCH
   // A single X4 Pro power click becomes Confirm only after the frontlight
   // double-click window expires without a second click.
-  mappedInputManager.setPowerConfirmClickFrame(false);
   if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM && x4ProDoubleClickPwrLight) {
     if (lastX4ProPowerClickAt != 0 && millis() - lastX4ProPowerClickAt > X4PRO_POWER_DOUBLE_CLICK_MS) {
       lastX4ProPowerClickAt = 0;
@@ -1024,12 +1112,18 @@ void loop() {
   // On X4 Pro with SLEEP, a press still within the click window is a
   // double-click candidate — let it be released and evaluated above instead
   // of sleeping on button-down.
-  const bool x4ProAwaitingClickWindow = x4ProDoubleClickPwrLight &&
+  const bool powerHighlightOwnsButton = powerHighlightGesture != PowerHighlightGesture::Idle;
+  const bool x4ProAwaitingClickWindow = !powerHighlightOwnsButton && x4ProDoubleClickPwrLight &&
                                         SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP &&
                                         gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS;
+  // Keep a page repaint from restoring the 10ms short-sleep threshold mid-click.
+  const bool powerHighlightReader = BoardConfig::isX4Pro() && activityManager.isForegroundReader();
+  const unsigned long powerSleepHoldMs = powerHighlightReader || powerHighlightOwnsButton
+                                             ? POWER_HIGHLIGHT_SLEEP_HOLD_MS
+                                             : SETTINGS.getPowerButtonDuration();
 
   if (!x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
-      gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
+      gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > powerSleepHoldMs) {
     // If the screenshot combination is potentially being pressed, don't sleep
     if (gpio.isPressed(HalGPIO::BTN_DOWN)) {
       return;

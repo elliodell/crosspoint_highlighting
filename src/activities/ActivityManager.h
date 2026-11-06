@@ -121,6 +121,9 @@ class ActivityManager {
   bool remoteTurn(bool forward, bool chapter);
   // A remote button mapped to the reader menu (true) or to a new clipping (false).
   bool remoteShortcut(bool readerMenu);
+  // Only the current screen may capture; stacked readers and pending navigation cannot.
+  bool supportsPowerHighlight() const;
+  void capturePowerHighlight();
   bool handleForcedRefresh();
   bool skipLoopDelay() const;
   ScreenshotInfo getScreenshotInfo() const;

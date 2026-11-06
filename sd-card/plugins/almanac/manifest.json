@@ -1,0 +1,8 @@
+{
+  "name": "almanac",
+  "title": "Almanac: Reading Stats",
+  "description": "Every page you read, counted on the reader and the web. Quick setup with your phone.",
+  "author": "BART!",
+  "version": "0.4.0",
+  "files": ["manifest.json", "device.json", "README.md", "DETAILS.md"]
+}

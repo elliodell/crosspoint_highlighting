@@ -25,6 +25,7 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"  // list icons for the compare rows
 #include "fontIds.h"
+#include "highlights/ReadwiseSync.h"
 #include "network/WifiPowerSaveGuard.h"
 #include "util/PluginEvents.h"
 #include "util/PluginHttp.h"
@@ -142,6 +143,7 @@ void KOReaderSyncActivity::onWifiSelectionComplete(const bool success) {
     requestUpdate(true);
 
     pluginevents::drain(&renderer);
+    readwisesync::poll();
     completeAlreadySynced();
     return;
   }

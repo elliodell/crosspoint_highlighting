@@ -1,0 +1,3 @@
+# Runtime credentials and private reading history copied back from a reader.
+/plugins/*/token.json
+/plugins/*/events.jsonl

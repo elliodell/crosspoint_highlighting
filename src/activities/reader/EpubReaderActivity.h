@@ -21,6 +21,11 @@
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
+ public:
+  bool supportsPowerHighlight() const override;
+  void capturePowerHighlight() override;
+
+ private:
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
@@ -50,6 +55,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool showFontDamagedMessage = false;
   unsigned long fontDamagedMessageTime = 0UL;
   bool showClippingMessage = false;
+  bool powerHighlightPending = false;
+  unsigned long powerHighlightStarted = 0;
+  uint32_t powerHighlightVisit = 0;
   StrId clippingMessage = StrId::STR_CLIPPING_SAVED;
   unsigned long clippingMessageTime = 0UL;
   bool currentPageBookmarked = false;
@@ -151,7 +159,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool makeRoomForChapterBuild();
   static constexpr uint32_t BUILD_ROOM_WAIT_MS = 5000;
   static constexpr uint32_t BUILD_ROOM_STEP_MS = 50;
-  bool inputOverPage() const override { return overlay != Overlay::None || ReaderActivity::inputOverPage(); }
+  bool inputOverPage() const override {
+    return powerHighlightPending || overlay != Overlay::None || ReaderActivity::inputOverPage();
+  }
   // "Connecting Bluetooth…" or "Bluetooth failed" in place of the status bar title.
   mutable LinkNoteTitle linkNoteTitle;
   static constexpr size_t RENDER_MIN_FREE_HEAP = 24 * 1024;

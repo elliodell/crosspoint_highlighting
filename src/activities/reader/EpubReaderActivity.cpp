@@ -57,6 +57,7 @@
 #include "clippings/ClippingsManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "highlights/HighlightCapture.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -453,6 +454,23 @@ void EpubReaderActivity::openDictionaryWordSelect() {
   startClipSelection(-1, -1, ClipSelectionActivity::Mode::Lookup);
 }
 
+bool EpubReaderActivity::supportsPowerHighlight() const {
+  return BoardConfig::isX4Pro() && !powerHighlightPending && pageRendered.load(std::memory_order_acquire) &&
+         !inputOverPage() && epub && section && section->currentPage >= 0 &&
+         section->currentPage < section->pageCount && buildViewportWidth > 0 && buildViewportHeight > 0;
+}
+
+void EpubReaderActivity::capturePowerHighlight() {
+  RenderLock lock;
+  if (!supportsPowerHighlight()) return;
+  automaticPageTurnActive = false;
+  pendingManualTurn = 0;
+  powerHighlightPending = true;
+  powerHighlightStarted = millis();
+  powerHighlightVisit = activityManager.visit();
+  GUI.drawPopup(renderer, tr(STR_INDEXING));
+}
+
 void EpubReaderActivity::startClipSelection(const int initialX, const int initialY,
                                             const ClipSelectionActivity::Mode mode) {
   if (!section || !epub || section->currentPage < 0 || section->currentPage >= section->pageCount) return;
@@ -642,6 +660,45 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  if (powerHighlightPending) {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (!lock.ownsLock()) return;
+    if (powerHighlightVisit != activityManager.visit()) {
+      powerHighlightPending = false;
+      requestUpdate();
+      return;
+    }
+    // Let main-loop Bluetooth ticks finish deferred teardown between attempts.
+    if (!radioReleasedForBuild.load() && !bleturner::status().starting) {
+      radioReleasedForBuild = bleturner::beforeChapterBuild() != bleturner::BuildRelease::NotHeld;
+    }
+    const bool room = chapterBuildMayRun(bleturner::status());
+    if (!room && millis() - powerHighlightStarted < BUILD_ROOM_WAIT_MS + 3000) return;
+    powerHighlightPending = false;
+    bool saved = false;
+    if (room && supportsPowerHighlight()) {
+      const int originalPage = section->currentPage;
+      const int originalCount = section->pageCount;
+      const auto originalOffset = section->getVisibleTextOffsetForPage(originalPage);
+      saved = highlights::capture(epub, *section, currentSpineIndex, renderer,
+                                  SETTINGS.readerRenderSpec(buildViewportWidth, buildViewportHeight));
+      if (!saved) {
+        // A failed build can invalidate the section. Reopen at the original content position.
+        cachedSpineIndex = currentSpineIndex;
+        cachedChapterTotalPageCount = originalCount;
+        cachedVisibleTextOffset = originalOffset;
+        nextPageNumber = originalPage;
+        section.reset();
+      }
+    }
+    if (!saved) LOG_ERR("HL", "Five-page capture failed; restoring reading position");
+    clippingMessage = saved ? StrId::STR_CLIPPING_SAVED : StrId::STR_CLIPPING_FAILED;
+    showClippingMessage = true;
+    clippingMessageTime = millis();
+    requestUpdate();
+    return;
+  }
+
   rememberBookOnceRendered();
 
   // The radio stopped for a chapter build: once the render task has let go of the lock, that page
@@ -788,6 +845,9 @@ void EpubReaderActivity::loop() {
     default:
       break;
   }
+
+  // Freeze this page during the power button's delayed single-click decision.
+  if (BoardConfig::isX4Pro() && gpio.isPressed(HalGPIO::BTN_POWER)) automaticPageTurnActive = false;
 
   if (automaticPageTurnActive) {
     const bool touchStopsAutoTurn = ReaderUtils::isTouchMenuGesture(renderer, mappedInput);

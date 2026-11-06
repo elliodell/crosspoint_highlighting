@@ -17,6 +17,7 @@
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "highlights/ReadwiseSync.h"
 #include "util/PluginEvents.h"
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
@@ -325,6 +326,7 @@ void CrossPointWebServerActivity::startWebServer() {
     // the drain's per-call event budget so serving is not noticeably delayed.
     if (!isApMode) {
       pluginevents::drain(&renderer);
+      readwisesync::poll();
     }
 
     // Force an immediate render since we're transitioning from a subactivity
@@ -437,6 +439,8 @@ void CrossPointWebServerActivity::loop() {
       onGoHome();
       return;
     }
+    // Network work is serialized with the web handler and never runs in USB Drive.
+    if (!isApMode && webServer && webServer->isRunning()) readwisesync::poll();
   }
 }
 

@@ -414,6 +414,20 @@ bool ActivityManager::isForegroundReader() const {
   return pendingAction == PendingAction::None && currentActivity && currentActivity->isReaderActivity();
 }
 
+bool ActivityManager::supportsPowerHighlight() const {
+  if (pendingAction != PendingAction::None || !currentActivity ||
+      paintedVisit.load(std::memory_order_acquire) != screenVisit) {
+    return false;
+  }
+  RenderLock lock(RenderLock::Mode::Try);
+  return lock.ownsLock() && currentActivity->supportsPowerHighlight();
+}
+
+void ActivityManager::capturePowerHighlight() {
+  if (!supportsPowerHighlight()) return;
+  currentActivity->capturePowerHighlight();
+}
+
 bool ActivityManager::isRemoteReaderContext() const {
   return pendingAction == PendingAction::None && currentActivity && currentActivity->acceptsRemoteInput();
 }
