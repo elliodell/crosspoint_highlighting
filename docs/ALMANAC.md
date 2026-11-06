@@ -7,8 +7,9 @@ present in the CrossPoint 2.0.0 base. No separate firmware patch is required.
 
 Almanac is a beta service maintained by BART!. Its upstream author reports
 testing on the Xteink X3. This bundle uses the same plugin interface on the
-**Xteink X4 Pro**, but this fork still needs an on-device check of setup and
-statistics on that model.
+**Xteink X4 Pro**. QR sign-in, the stats screen and reading-time updates were verified on that
+model. See the [recorded device checks](VERIFY.md) for the tested firmware
+and remaining limits.
 
 ## Set up on an Xteink X4 Pro
 
@@ -26,9 +27,11 @@ statistics on that model.
 4. Connect the reader to your Wi-Fi once so it remembers the network and gets
    a trustworthy clock. Reading sessions need a valid clock to be recorded.
 5. Open **Home → Plugins → Almanac: Reading Stats → Sign in**. Scan the QR code
-   with your phone and confirm the displayed code. No email/password account
-   is required. The phone browser used for confirmation retains access to your
-   stats.
+   with your phone and confirm the displayed code. If the reader says **Not signed
+   in yet**, tap that message (away from the back arrow) to start sign-in. Keep
+   the sign-in screen open until the reader shows your stats. No email/password
+   account is required. The phone browser used for confirmation retains access
+   to your stats.
 6. Read normally. After reading, leave the book and open **Almanac: Reading
    Stats** to upload pending sessions and see your totals. Putting the reader
    to sleep also attempts an upload on the last connected Wi-Fi network.
@@ -105,8 +108,8 @@ After setup, open a book and read several pages, leaving each visible for at
 least five seconds before an ordinary forward turn. Accumulate more than ten
 seconds, leave the book, and open Almanac while online. Confirm that the book
 and reading time appear. Repeat with Wi-Fi unavailable, then reconnect and
-check that the pending session arrives. This is the remaining hardware check
-for the X4 Pro.
+check that the pending session arrives. Offline delivery, outbox limits and
+battery impact still need separate checks on the X4 Pro.
 
 ## Source and maintenance
 

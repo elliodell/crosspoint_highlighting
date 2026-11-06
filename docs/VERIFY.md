@@ -1,5 +1,17 @@
 # Verification
 
+## Recorded X4 Pro checks
+
+Version `2.0.0-highlights.3-x4pro` was installed through the SD-card updater and its displayed version verified.
+
+- Library backup and preservation of books, settings and original TXT exports were verified.
+- Fresh adjacent-page captures matched uninterrupted intervals of original EPUB paragraphs, including outer paragraph boundaries, a chapter boundary and an explicit line break in a heading.
+- Direct device Wi-Fi uploads preserved all unique paragraphs without repeating overlapping text. Capture/part IDs and shared merge IDs appeared in notes only.
+- Almanac 0.4.0 sign-in, stats display and reading-time updates were verified.
+- Upload receipts were read back and their header, source, account, payload and acknowledgement hashes verified. Existing Readwise highlights were retained. Legacy migration checks used exports repaired against their source EPUB; fresh capture checks used the installed firmware.
+
+These checks cover the tested passages and layout. They do not establish every EPUB structure or orientation, long split uploads on hardware, physical power-loss recovery, restart/reconnect retries, memory stability, battery behavior, or offline Almanac delivery. Those checks remain outstanding. Private passages, credentials and device backups are excluded from this repository.
+
 ## Host checks
 
 Run from the repository root:
