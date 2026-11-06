@@ -5,10 +5,10 @@ These instructions are for **X4 Pro (ESP32-S3)**. Do not use the X3/X4 ESP32-C3 
 ## Browser installation
 
 1. Back up the SD card, including the hidden `.crosspoint` folder, and charge the reader. Keep that backup outside the public source repository.
-2. Download `crosspoint-2.0.0-highlights.3-x4pro.bin` and `crosspoint-highlighting-sd-card.zip` from [this repository's Releases](https://github.com/elliodell/crosspoint_highlighting/releases). The release is experimental until you complete the device checks below.
+2. Download `crosspoint-2.0.0-highlights.4-x4pro.bin` and `crosspoint-highlighting-sd-card.zip` from [this repository's Releases](https://github.com/elliodell/crosspoint_highlighting/releases). The release is experimental until you complete the device checks below.
 3. Use a desktop browser with Web Serial support, such as Chrome or Edge. Connect the X4 Pro with a USB data cable.
 4. Open [CrossPoint's flash tools](https://crosspointreader.com/#flash-tools), select **X4 Pro**, choose **Custom .bin**, and select the downloaded firmware file. Follow the flasher's connection and completion prompts. Do not disconnect during flashing.
-5. Restart the reader. The version should contain `2.0.0-highlights.3` and `x4pro`.
+5. Restart the reader. The version should contain `2.0.0-highlights.4` and `x4pro`.
 6. Extract the SD-card ZIP. Copy its `plugins` folder to the SD-card root (merge with an existing `plugins` folder). The result must be `/plugins/almanac/manifest.json`, not `/sd-card/plugins/...`.
 7. Safely eject the card/USB Drive, then restart. Follow [Almanac setup](ALMANAC.md) and [Readwise setup](READWISE.md) if desired.
 8. Open a short EPUB, tap power once, and check `/Highlights` for matching text and JSON exports. Follow the [device checks](VERIFY.md) before relying on it for important captures.
@@ -18,6 +18,8 @@ The `.bin` is an application image. For a completely erased device or incompatib
 ## Update from an existing CrossPoint installation
 
 CrossPoint also supports installing a firmware file from the SD card through its firmware update flow. Use this fork's X4 Pro binary only; follow the prompts in Settings → System. Browser installation above is the most direct path if your current version's menu differs.
+
+Version `2.0.0-highlights.4` removes broken page-number links from newly prepared Readwise uploads. Page numbers, paragraph handling, overlap matching, and IDs in notes remain. Already uploaded highlights and frozen pending requests keep their old links unless cleaned separately; see [Readwise setup](READWISE.md#existing-links-from-highlights3). Existing Almanac and Readwise configuration remains compatible.
 
 Version `2.0.0-highlights.3` uploads actual highlights to Readwise Browse → Library. The existing token configuration still works. Previously captured text is retained and uploaded even if an earlier version already sent it as a Reader document. Long captures become numbered parts sharing their own capture ID. New captures preserve paragraphs and upload only new text when they overlap earlier acknowledged captures. Older exports lack that metadata and retain their existing formatting; see the migration notes in [Readwise setup](READWISE.md). Earlier Reader documents are retained; this update does not delete anything from your account.
 

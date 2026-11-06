@@ -414,11 +414,7 @@ unsigned writePayload(PayloadWriter& out, const Capture& capture, JsonArrayConst
           "\",\"source_type\":\"crosspoint_highlighting\",\"category\":\"books\",\"location_type\":\"page\","
           "\"location\":");
       out.number(doc["page"]);
-      out.raw(",\"highlight_url\":\"https://crosspoint-highlighting.invalid/highlights/");
-      out.text(doc["id"]);
-      out.raw("/part-");
-      out.number(part);
-      out.raw("\",\"note\":\"crosspoint:");
+      out.raw(",\"note\":\"crosspoint:");
       out.text(doc["id"]);
       out.raw(" ");
       out.number(part);

@@ -1,3 +1,5 @@
+#include <mbedtls/sha256.h>
+
 #include <cassert>
 #include <string>
 
@@ -78,8 +80,7 @@ void successfulUpload() {
   assert(!deserializeJson(doc, fake::requests.front()));
   assert(doc["highlights"].size() == 1);
   const auto highlight = doc["highlights"][0];
-  assert(highlight["highlight_url"] ==
-         "https://crosspoint-highlighting.invalid/highlights/0123456789abcdef0123456789abcdef/part-1");
+  assert(highlight["highlight_url"].isNull());
   assert(highlight["category"] == "books" && highlight["source_type"] == "crosspoint_highlighting");
   assert(highlight["title"] == "A & <book>" && highlight["author"] == "Author");
   assert(highlight["location"] == 3 && highlight["location_type"] == "page");
@@ -265,8 +266,7 @@ void splitHighlights() {
       const std::string note = highlight["note"];
       assert(note.find(std::string("crosspoint:") + ID + " " + std::to_string(part) + "/" +
                        std::to_string(highlights.size())) != std::string::npos);
-      assert(highlight["highlight_url"] ==
-             std::string("https://crosspoint-highlighting.invalid/highlights/") + ID + "/part-" + std::to_string(part));
+      assert(highlight["highlight_url"].isNull());
       assert(highlight["title"] == "A & <book>" && highlight["source_url"].isNull());
     }
     assert(joined == text + "\n\n" + text + "\n\n" + text + "\n\n" + text);
@@ -317,11 +317,10 @@ void separateCaptureIdentities() {
     assert(!deserializeJson(request, fake::requests[i]));
     for (JsonObjectConst highlight : request["highlights"].as<JsonArrayConst>()) {
       const std::string note = highlight["note"];
-      const std::string url = highlight["highlight_url"];
       const bool first = note.find(ID) != std::string::npos;
       const bool secondCapture = note.find(secondId) != std::string::npos;
       assert(first != secondCapture);
-      assert(url.find(first ? ID : secondId) != std::string::npos);
+      assert(highlight["highlight_url"].isNull());
       assert(highlight["title"] == "A & <book>" && highlight["author"] == "Author");
     }
   }
@@ -548,6 +547,58 @@ void acknowledgementRecovery() {
   assert(fake::requests.size() == 2 && lastRequest()["highlights"][0]["text"] == "C");
 }
 
+std::string sha256(const std::string& bytes) {
+  mbedtls_sha256_context context;
+  mbedtls_sha256_init(&context);
+  assert(mbedtls_sha256_starts(&context, 0) == 0);
+  assert(mbedtls_sha256_update(&context, reinterpret_cast<const unsigned char*>(bytes.data()), bytes.size()) == 0);
+  unsigned char digest[32];
+  assert(mbedtls_sha256_finish(&context, digest) == 0);
+  mbedtls_sha256_free(&context);
+  std::string result;
+  for (const auto byte : digest) {
+    result += "0123456789abcdef"[byte >> 4];
+    result += "0123456789abcdef"[byte & 15];
+  }
+  return result;
+}
+
+void previousVersionPendingRequest() {
+  reset();
+  fake::add(CAPTURE, formattedCapture(ID, {"A", "B"}));
+  assert(readwiseplan::prepare(ACCOUNT, ID));
+  const auto& bytes = fake::files[TEMP_MARKER]->bytes;
+  const std::string prepared(bytes.begin(), bytes.end());
+  const size_t payloadStart = prepared.find('\n', 65) + 1;
+  JsonDocument header;
+  JsonDocument payload;
+  assert(!deserializeJson(header, prepared.substr(65, payloadStart - 66)));
+  assert(!deserializeJson(payload, prepared.substr(payloadStart)));
+  // Simulate a frozen request saved by highlights.3 before the firmware update.
+  payload["highlights"][0]["highlight_url"] =
+      std::string("https://crosspoint-highlighting.invalid/highlights/") + ID + "/part-1";
+  std::string oldPayload;
+  serializeJson(payload, oldPayload);
+  header["payload_size"] = oldPayload.size();
+  header["payload_hash"] = sha256(oldPayload);
+  std::string encodedHeader;
+  serializeJson(header, encodedHeader);
+  const std::string oldRequest = sha256(encodedHeader) + "\n" + encodedHeader + "\n" + oldPayload;
+  fake::add(TEMP_MARKER, oldRequest);
+  readwisesync::poll();
+  assert(alreadySent(ID) && fake::requests.size() == 1 && fake::requests.front() == oldPayload);
+  const auto& saved = fake::files[TEMP_MARKER]->bytes;
+  assert(std::string(saved.begin(), saved.end()) == oldRequest);
+  pollLater();
+  assert(fake::requests.size() == 1);
+  sendCapture(SECOND, {"B", "C"});
+  const auto next = lastRequest();
+  assert(next["highlights"].size() == 1 && next["highlights"][0]["text"] == "C");
+  assert(next["highlights"][0]["highlight_url"].isNull());
+  assert(std::string(next["highlights"][0]["note"].as<const char*>()).find(std::string("merge:") + ID) !=
+         std::string::npos);
+}
+
 void longUniqueOverlap() {
   reset();
   sendCapture(ID, {"Already saved"});
@@ -588,5 +639,6 @@ int main() {
   frozenRetryAndCorruption();
   longUniqueOverlap();
   acknowledgementRecovery();
+  previousVersionPendingRequest();
   puts("Readwise sync tests passed");
 }

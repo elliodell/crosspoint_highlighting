@@ -1,5 +1,11 @@
 # Verification
 
+## highlights.4 update checks
+
+The Readwise host harness checks that newly prepared uploads omit `highlight_url` while retaining page numbers and capture/part notes, including long splits and separate captures. It also checks byte-for-byte retries, recovery of a pending highlights.3 request without rewriting it, and paragraph overlap against its acknowledgement.
+
+On the X4 Pro, install `2.0.0-highlights.4-x4pro`, capture a new passage, and sync over Wi-Fi. In Readwise, verify that its page number has no broken source link, the passage and note remain correct, and reconnecting does not create another copy. Existing or previously prepared uploads may retain the old link; see [Readwise setup](READWISE.md#existing-links-from-highlights3). This release still needs that device check; the recorded hardware results below apply to highlights.3.
+
 ## Recorded X4 Pro checks
 
 Version `2.0.0-highlights.3-x4pro` was installed through the SD-card updater and its displayed version verified.

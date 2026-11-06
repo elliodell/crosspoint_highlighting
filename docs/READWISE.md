@@ -25,9 +25,11 @@ Every note also has a `merge:<id>` line. An extending capture inherits the earli
 
 Matching requires identical complete source paragraphs in the same chapter and book title/author, using acknowledged captures retained on the SD card. Different pagination can still match. Small textual differences are retained. Changes to the book's chapter structure may prevent matching. The reader does not scan your existing Readwise library for unrelated imports.
 
-Readwise also deduplicates identical title, author, passage text, and source URL. This can merge repeated captures or identical split parts and replace their notes, even with different part URLs. Direct sync cannot guarantee that all capture/part IDs survive those exact-text duplicates. Local exports preserve every full capture. Distinct text is split into distinct pieces.
+Readwise also deduplicates identical title, author, passage text, and source URL. This can merge repeated captures or identical split parts and replace their notes. Direct sync cannot guarantee that all capture/part IDs survive those exact-text duplicates. Local exports preserve every full capture. Distinct text is split into distinct pieces.
 
 Page numbers are local to the captured chapter and depend on the reader's layout; they are not printed-book page numbers. The note retains the selected chapter/page. Readwise book titles are limited here to 511 UTF-8 bytes and authors to 1024, ending at complete characters; full metadata remains in the local export.
+
+New uploads from version `2.0.0-highlights.4` omit the source hyperlink, so the page number no longer opens a broken address. Capture/part and merge IDs remain in notes. The reader cannot open a local EPUB page from Readwise.
 
 ## One-time setup
 
@@ -62,13 +64,17 @@ Old captures lack reliable paragraph-boundary metadata. They are uploaded conser
 
 - Only complete `.json` captures are uploaded. Temporary files and `.txt` exports are ignored.
 - One capture's parts are sent together in one request. A complete HTTP 200 with a valid book acknowledgement is required before a separate matching acknowledgement is saved. Requests are never renamed or rewritten after publication; interrupted acknowledgements can retry without creating shared SD file entries. A fully covered capture records verified prior coverage without a network request. A duplicate response can contain no modified highlight IDs and still acknowledge the request.
-- Each part has a stable `highlight_url` based on capture ID and part number. Readwise also deduplicates identical title/author/text/source combinations. Retries preserve the same payload and identities. The `.invalid` URL is an identifier, not a website containing your book.
+- Retries send the exact frozen payload. Readwise's title/author/text/source deduplication handles repeat delivery; a `highlight_url` is not required. Capture/part IDs remain in notes and local receipts.
 - Uploads run at existing network idle points. Success waits at least three seconds; failures back off from 30 seconds to 15 minutes. Numeric server `Retry-After` is respected up to 24 hours. Authentication failures wait at least 15 minutes; restarting clears the in-memory timer.
 - Network, response, memory, and SD-write failures retain the local capture for retry. An empty or oversized acknowledgement is not marked sent. Keep both the original JSON captures and receipt folders: overlap checks need them. Missing or modified source files, corrupt receipts, or corrupt pending requests defer the affected sync instead of discarding uncertain text; keep a backup before repairing them. A different token gets its own receipt folder and re-queues captures automatically, including when rotating a token for the same account. Readwise's own deduplication still applies.
 - No upload worker remains active while reading or in USB Drive mode. Plugin enablement is not required for Readwise sync.
 - The token is plain text on the SD card. The firmware blocks its directory from web file management and plugin endpoints, but physical access to the card/USB Drive allows reading it.
 - Requests use verified HTTPS to `readwise.io`; credentials are never forwarded through redirects. Logs omit tokens, passages, and server response bodies.
 - Disable uploads by setting `"enabled": false` or removing `config.json`. Local capture and export continue working.
+
+### Existing links from highlights.3
+
+The update does not edit highlights already in your Readwise account. An upload prepared by highlights.3 also retries its original frozen request, including its old `.invalid` link; changing a request mid-retry could change delivery behavior. These old links do not open book pages. They can be cleared separately through the Readwise API by updating only the highlight's `url` field to an empty string. Keep the text and note intact, and retain the local requests and acknowledgements. Newly prepared uploads omit the link.
 
 ## Maintainer notes
 
