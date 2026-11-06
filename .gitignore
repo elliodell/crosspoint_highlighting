@@ -34,3 +34,19 @@ lib/EpdFont/scripts/output/
 sdkconfig.sticky
 sdkconfig.x4pro
 flake.*
+
+# Personal device data and account configuration must stay outside the repository.
+.crosspoint/
+/Highlights/
+/sd-card/Highlights/
+My Clippings.txt
+token.json
+events.jsonl
+.env
+.env.*
+!.env.example
+*.epub
+*.log
+/device-private/
+/device-backups/
+/device-install/
