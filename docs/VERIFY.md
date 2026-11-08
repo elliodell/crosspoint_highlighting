@@ -23,6 +23,7 @@ reading retained the same API ID and exactly one matching session.
 An older retained session also uploaded during sleep once its recorded end time
 had passed; its API record matched the original frozen request without rewriting
 the saved reading history.
+The final SD check confirmed valid receipts for both sessions and an empty queue.
 
 The Books app display, broader offline/restart recovery, heap/stack measurements
 and battery impact remain unverified. Device test for another installation:
