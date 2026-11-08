@@ -22,7 +22,10 @@ class HalClock {
   // Call after BoardConfig has selected the active device.
   void begin();
 
-  // True if an RTC is present on this device
+  // Board capability, independent of whether the RTC initialized successfully.
+  bool hasRtc() const;
+
+  // True if the RTC initialized successfully.
   bool isAvailable() const { return _available; }
 
   // Set the POSIX TZ rule (e.g. "CET-1CEST,M3.5.0,M10.5.0/3") applied to every
@@ -33,6 +36,10 @@ class HalClock {
   // Current wall-clock time in the configured timezone.
   // Returns false if RTC is not available.
   bool localTime(struct tm& out) const;
+
+  // Fresh UTC epoch for recorded events. Bypasses the display cache and
+  // returns false on an unreadable/stopped RTC; no stale value is returned.
+  bool utcTime(time_t& out) const;
 
   // Get current local hour (0-23) and minute (0-59).
   // Returns false if RTC is not available.

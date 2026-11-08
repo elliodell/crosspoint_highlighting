@@ -5,7 +5,7 @@
 # Almanac + Readwise Books
 
 This downstream edition can also mirror reading sessions to Readwise Books.
-It requires CrossPoint Highlighting 2.0.0-highlights.5 or later and a one-time
+It requires CrossPoint Highlighting 2.0.0-highlights.6 or later and a one-time
 USB setup. See https://github.com/elliodell/almanac-readwise/tree/feat/readwise-books-sync
 for installation, privacy, and recovery instructions. Existing Almanac setup
 continues to work on ordinary firmware, which ignores the optional mirror.

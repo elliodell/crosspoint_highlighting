@@ -7,7 +7,7 @@
 class ReaderSession {
  public:
   void noteTurn(bool forward, bool succeeded);
-  void onRenderComplete(uint32_t monotonicMs, int64_t trustedEpoch, int progressBp);
+  void onRenderComplete(uint32_t monotonicMs, int64_t wallEpoch, int progressBp);
   void reset();
 
   bool isEmitWorthy() const { return startEpoch > 0 && duration >= 10 && endTime() > startEpoch; }

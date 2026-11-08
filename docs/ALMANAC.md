@@ -55,6 +55,11 @@ each credited dwell is capped at **30 minutes**. Backward turns, chapter skips,
 failed turns and quick paging do not count. A session needs at least
 **10 seconds** of counted reading and a trustworthy start time.
 
+From highlights.6, X4 Pro sessions use a fresh RTC UTC reading rather than the
+loan-expiry clock. This prevents an old future clock floor from dating new
+sessions ahead of real time. Active seconds still use elapsed page dwell.
+An unreadable or unset RTC provides no new session timestamp.
+
 A session is flushed when you leave a book or put the reader to sleep. The
 time spent on the final displayed page is not credited until a qualifying
 forward turn, so this is an estimate of active reading rather than a stopwatch

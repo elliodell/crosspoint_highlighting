@@ -9,7 +9,7 @@ after setup, and no AI/MCP connection is required for daily syncing.
 ## Requirements
 
 - Xteink X4 Pro running the companion CrossPoint Highlighting firmware
-  **2.0.0-highlights.5-x4pro** or later with `readwise-books-v1` support.
+  **2.0.0-highlights.6-x4pro** or later with `readwise-books-v1` support.
 - Readwise Books access and a [Readwise access token](https://readwise.io/access_token).
 - Python 3.9+ on the setup computer (no extra Python packages).
 
@@ -141,3 +141,20 @@ device validation are recorded separately in `VERIFY.md`. No synthetic test
 reading sessions are uploaded to your account.
 
 Protocol reference: [official Books API](https://readwise.io/books_api).
+
+## Reading timestamps
+
+Use companion firmware **2.0.0-highlights.6** or later on X4 Pro. Version .5
+could timestamp a session in the future when the saved loan-expiry clock was
+ahead of the RTC; Readwise rejects future sessions. New sessions now read UTC
+from the RTC, while active seconds still come from page dwell time. The
+loan-expiry clock and existing queued records are unchanged.
+
+An unreadable or unset RTC provides no new timestamp; the reader does not
+substitute the potentially future loan clock. Use **Settings → System → Clock
+→ Sync clock now** if the RTC needs setting. Boards without RTC retain their
+previous clock fallback and are not verified targets for this feature.
+
+A previously queued future-dated session remains saved and can upload on a
+later connection once its recorded end time has passed. The update does not
+guess a replacement timestamp or import past Almanac cloud history.

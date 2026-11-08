@@ -5,7 +5,6 @@
 #include <HalStorage.h>
 #include <KOReaderDocumentId.h>
 #include <Memory.h>
-#include <TrustedTime.h>
 
 #include <algorithm>
 #include <cctype>
@@ -14,6 +13,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "EpubReaderActivity.h"
+#include "ReaderSessionClock.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
@@ -260,12 +260,12 @@ void ReaderActivity::render(RenderLock&&) {
     renderer.displayBuffer();
     onEndOfBookRendered();
     markPageRendered();
-    readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
+    readerSession.onRenderComplete(millis(), readersessionclock::now(), getProgressBasisPoints());
     return;
   }
 
   renderBook();
-  readerSession.onRenderComplete(millis(), trustedtime::trustedNow(), getProgressBasisPoints());
+  readerSession.onRenderComplete(millis(), readersessionclock::now(), getProgressBasisPoints());
 }
 
 bool ReaderActivity::handleForcedRefresh() {

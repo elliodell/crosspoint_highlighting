@@ -1,11 +1,14 @@
 #include "HalClock.h"
 
+#include <BoardConfig.h>
 #include <Logging.h>
 #include <WiFi.h>
 #include <esp_sntp.h>
 #include <time.h>
 
 HalClock halClock;  // Singleton instance
+
+bool HalClock::hasRtc() const { return BoardConfig::hasRtc(); }
 
 void HalClock::begin() {
   _available = _sdkRtc.begin();
@@ -49,6 +52,14 @@ bool HalClock::localTime(struct tm& out) const {
     _lastPollMs = now != 0 ? now : 1;  // 0 doubles as the invalidation sentinel
   }
   localtime_r(&_cachedUtc, &out);
+  return true;
+}
+
+bool HalClock::utcTime(time_t& out) const {
+  if (!_available) return false;
+  Rtc::DateTime dt;
+  if (!_sdkRtc.now(dt)) return false;
+  out = epochFromUtc(dt);
   return true;
 }
 

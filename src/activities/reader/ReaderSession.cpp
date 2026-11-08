@@ -13,7 +13,7 @@ uint16_t ReaderSession::clampProgress(const int progressBp) {
 
 void ReaderSession::noteTurn(const bool forward, const bool succeeded) { pendingForward = forward && succeeded; }
 
-void ReaderSession::onRenderComplete(const uint32_t monotonicMs, const int64_t trustedEpoch, const int progressBp) {
+void ReaderSession::onRenderComplete(const uint32_t monotonicMs, const int64_t wallEpoch, const int progressBp) {
   const uint16_t progress = clampProgress(progressBp);
   if (pendingForward && hasAnchor && anchorEpoch > 0) {
     const uint32_t elapsedSeconds = (monotonicMs - anchorMs) / 1000;
@@ -30,7 +30,7 @@ void ReaderSession::onRenderComplete(const uint32_t monotonicMs, const int64_t t
   }
 
   anchorMs = monotonicMs;
-  anchorEpoch = trustedEpoch;
+  anchorEpoch = wallEpoch;
   anchorProgress = progress;
   hasAnchor = true;
   pendingForward = false;

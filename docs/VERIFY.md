@@ -1,3 +1,24 @@
+## highlights.6 reading-clock correction
+
+New X4 Pro reading sessions use a fresh RTC UTC reading. The loan clock,
+existing saved sessions and network/upload protocol are unchanged. The change
+adds one RTC register read per completed page and no heap allocation or task.
+A failed or unset RTC is not replaced with the loan clock. Boards without RTC
+retain their previous fallback.
+
+The production HAL/reading-clock host test passes, including a failed RTC boot
+probe, unreadable/unset RTC, time zones, and a future loan-clock floor. Existing
+loan-clock and Books/transport checks pass. Four independent review axes and
+their targeted follow-ups are complete. Formatting and the final X4 Pro build
+pass without compiler warnings/errors: static RAM 111,804 / 327,680 bytes and
+flash 5,483,250 / 6,553,600 bytes. The application image is 5,488,512 bytes,
+SHA-256 `9c3e818c975207df1f3d97e047a39d8dc9660ee1431552f3e4bc6fc09ddc0d0d`.
+
+Physical-device delivery and performance remain unverified for .6. Device test:
+verify the .6 About version, read forward across at least ten active seconds,
+connect Wi-Fi, then compare the new session and receipt with Readwise Books.
+Repeat a connection without more reading to check for duplicate uploads.
+
 ## Readwise Books feature branch
 
 Firmware 2.0.0-highlights.5 adds the optional Almanac session mirror. Host
@@ -5,9 +26,11 @@ conversion/fault tests, existing highlight regression tests, and setup tests
 pass. Four review axes and targeted follow-ups are complete; the final X4 Pro
 build passed without compiler warnings/errors (111,804 bytes static RAM and
 5,483,058 bytes flash). The production HTTP retry-control test also passed
-with AddressSanitizer/UndefinedBehaviorSanitizer. Device
-installation, Books/Almanac comparison, offline retry, sleep latency, and
-heap/stack measurements remain pending. See
+with AddressSanitizer/UndefinedBehaviorSanitizer. Installation was verified on
+X4 Pro. The first Books session was retained on
+SD but rejected for a future timestamp; the cause was the saved loan-clock
+floor overriding the correct RTC. End-to-end Books delivery, offline retry,
+and heap/stack measurements remain pending. See
 [the installation and recovery instructions](READWISE-BOOKS.md).
 
 # Verification
