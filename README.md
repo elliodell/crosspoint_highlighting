@@ -1,5 +1,5 @@
 > This feature branch adds optional [Almanac → Readwise Books session sync](docs/READWISE-BOOKS.md).
-> It requires firmware 2.0.0-highlights.6 and one-time USB setup; device verification is pending.
+> It requires firmware 2.0.0-highlights.6 and one-time USB setup; see the [X4 Pro verification results](docs/VERIFY.md).
 
 # CrossPoint Highlighting — Xteink X4 Pro
 

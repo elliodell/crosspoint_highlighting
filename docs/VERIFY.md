@@ -14,7 +14,18 @@ pass without compiler warnings/errors: static RAM 111,804 / 327,680 bytes and
 flash 5,483,250 / 6,553,600 bytes. The application image is 5,488,512 bytes,
 SHA-256 `9c3e818c975207df1f3d97e047a39d8dc9660ee1431552f3e4bc6fc09ddc0d0d`.
 
-Physical-device delivery and performance remain unverified for .6. Device test:
+X4 Pro installation and direct Wi-Fi delivery are verified for .6. A new
+session's book, UTC interval, active duration, progress and device fields matched
+Readwise's API record. The saved receipt matched the exact request hash and API
+session ID, and the acknowledged queue entry was removed. The user confirmed
+the recorded duration was approximately correct. Reconnecting without further
+reading retained the same API ID and exactly one matching session.
+An older retained session also uploaded during sleep once its recorded end time
+had passed; its API record matched the original frozen request without rewriting
+the saved reading history.
+
+The Books app display, broader offline/restart recovery, heap/stack measurements
+and battery impact remain unverified. Device test for another installation:
 verify the .6 About version, read forward across at least ten active seconds,
 connect Wi-Fi, then compare the new session and receipt with Readwise Books.
 Repeat a connection without more reading to check for duplicate uploads.
@@ -29,8 +40,8 @@ build passed without compiler warnings/errors (111,804 bytes static RAM and
 with AddressSanitizer/UndefinedBehaviorSanitizer. Installation was verified on
 X4 Pro. The first Books session was retained on
 SD but rejected for a future timestamp; the cause was the saved loan-clock
-floor overriding the correct RTC. End-to-end Books delivery, offline retry,
-and heap/stack measurements remain pending. See
+floor overriding the correct RTC. The .6 delivery checks are recorded above;
+broader offline retry and heap/stack measurements remain pending. See
 [the installation and recovery instructions](READWISE-BOOKS.md).
 
 # Verification
