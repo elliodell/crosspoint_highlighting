@@ -1,3 +1,15 @@
+## Readwise Books feature branch
+
+Firmware 2.0.0-highlights.5 adds the optional Almanac session mirror. Host
+conversion/fault tests, existing highlight regression tests, and setup tests
+pass. Four review axes and targeted follow-ups are complete; the final X4 Pro
+build passed without compiler warnings/errors (111,804 bytes static RAM and
+5,483,058 bytes flash). The production HTTP retry-control test also passed
+with AddressSanitizer/UndefinedBehaviorSanitizer. Device
+installation, Books/Almanac comparison, offline retry, sleep latency, and
+heap/stack measurements remain pending. See
+[the installation and recovery instructions](READWISE-BOOKS.md).
+
 # Verification
 
 ## highlights.4 update checks

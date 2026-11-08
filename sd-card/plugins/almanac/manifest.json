@@ -1,8 +1,13 @@
 {
   "name": "almanac",
-  "title": "Almanac: Reading Stats",
-  "description": "Every page you read, counted on the reader and the web. Quick setup with your phone.",
+  "title": "Almanac + Readwise Books",
+  "description": "Almanac reading stats with optional direct Readwise Books session sync.",
   "author": "BART!",
-  "version": "0.4.0",
-  "files": ["manifest.json", "device.json", "README.md", "DETAILS.md"]
+  "version": "0.4.0-readwise.1",
+  "files": [
+    "manifest.json",
+    "device.json",
+    "README.md",
+    "DETAILS.md"
+  ]
 }

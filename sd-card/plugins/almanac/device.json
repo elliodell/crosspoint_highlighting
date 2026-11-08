@@ -1,22 +1,32 @@
 {
-  "title": "Almanac: Reading Stats",
-  "description": "Every page you read, counted on the reader and the web. Quick setup with your phone.",
+  "title": "Almanac + Readwise Books",
+  "description": "Almanac reading stats with optional direct Readwise Books session sync.",
   "author": "BART!",
-  "version": "0.4.0",
-  "token": { "file": "token.json", "path": "token" },
+  "version": "0.4.0-readwise.1",
+  "token": {
+    "file": "token.json",
+    "path": "token"
+  },
   "auth": {
     "type": "device_code",
-    "request": { "url": "https://almanac.im/api/device/code", "method": "POST" },
+    "request": {
+      "url": "https://almanac.im/api/device/code",
+      "method": "POST"
+    },
     "poll": {
       "url": "https://almanac.im/api/device/token",
       "method": "POST",
-      "headers": { "Content-Type": "application/json" },
+      "headers": {
+        "Content-Type": "application/json"
+      },
       "body": "{\"device_code\":\"{device_code}\"}"
     }
   },
   "browse": {
     "url": "https://almanac.im/api/catalog?page={page}&limit={limit}&family={firmware_family}&firmware={firmware_version}&build=400",
-    "headers": { "Authorization": "Bearer {token}" },
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
     "items": "items",
     "fields": {
       "title": "title",
@@ -31,7 +41,9 @@
   },
   "download": {
     "url": "https://img.almanac.im/sleep.bmp?row={id}&build=400",
-    "headers": { "Authorization": "Bearer {token}" },
+    "headers": {
+      "Authorization": "Bearer {token}"
+    },
     "filename": "sleep.bmp"
   },
   "events": {
@@ -39,10 +51,14 @@
       "request": {
         "method": "POST",
         "url": "https://almanac.im/api/sessions",
-        "headers": { "Authorization": "Bearer {token}", "Content-Type": "application/json" },
+        "headers": {
+          "Authorization": "Bearer {token}",
+          "Content-Type": "application/json"
+        },
         "body": "{\"v\":\"1\",\"id\":\"{event.id}\",\"ts\":\"{event.ts}\",\"book\":\"{event.book}\",\"document\":\"{event.document}\",\"start_time\":\"{event.start_time}\",\"end_time\":\"{event.end_time}\",\"duration_seconds\":\"{event.duration_seconds}\",\"start_progress_bp\":\"{event.start_progress_bp}\",\"end_progress_bp\":\"{event.end_progress_bp}\",\"progress_scale\":\"{event.progress_scale}\"}"
       },
-      "connect": true
+      "connect": true,
+      "mirror": "readwise-books-v1"
     }
   }
 }

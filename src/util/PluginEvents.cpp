@@ -15,6 +15,7 @@
 #include "PluginHttp.h"
 #include "PluginLocations.h"
 #include "components/UITheme.h"
+#include "integrations/ReadwiseBooks.h"
 #include "network/ProtectedPaths.h"
 
 namespace {
@@ -43,6 +44,7 @@ struct Subscriber {
   char dir[64] = {0};       // "<root>/<name>"
   uint8_t mask = 0;         // bit per Event
   uint8_t connectMask = 0;  // events whose handler declares "connect": true
+  bool readwiseBooks = false;
   // Hash of each handler's "require_meta" key, 0 = unfiltered. A hash keeps
   // emit() free of manifest reads; a collision only queues an extra event.
   uint32_t metaKeyHash[static_cast<size_t>(pluginevents::Event::COUNT)] = {};
@@ -132,6 +134,7 @@ void refreshSubscriptions() {
     strncpy(sub.dir, entry.dir.c_str(), sizeof(sub.dir) - 1);
     sub.mask = mask;
     sub.connectMask = connectMask;
+    sub.readwiseBooks = doc["events"]["reader.session"]["mirror"] == "readwise-books-v1";
     memcpy(sub.metaKeyHash, metaHashes, sizeof(metaHashes));
     LOG_DBG("PEVT", "%s subscribes mask=0x%02x", sub.name, sub.mask);
   }
@@ -152,6 +155,9 @@ uint8_t subscriptionMask(const char* plugin) {
 }
 
 bool wantsConnectAny() {
+  for (const auto& sub : subscribers) {
+    if (sub.readwiseBooks && readwisebooks::hasPending()) return true;
+  }
   for (const auto& sub : subscribers) {
     if (sub.name[0] == '\0' || sub.connectMask == 0) continue;
     std::string raw;
@@ -199,8 +205,13 @@ void emit(const Event e, const Var* vars, const size_t varCount) {
   // The book's sidecar, read once and shared by every filtered handler.
   pluginhttp::Headers meta;
   bool metaLoaded = false;
+  bool mirrored = false;
   for (const auto& sub : subscribers) {
     if (sub.name[0] == '\0' || !(sub.mask & eventBit(e))) continue;
+    if (e == Event::ReaderSession && sub.readwiseBooks && !mirrored) {
+      readwisebooks::enqueue(line);
+      mirrored = true;
+    }
     const uint32_t wanted = sub.metaKeyHash[static_cast<size_t>(e)];
     if (wanted != 0) {
       // Filtered at queue time, so other books' events take no outbox space
@@ -448,6 +459,14 @@ bool deliverLine(const DrainManifest& mf, const std::string& lineText, std::stri
 }  // namespace
 
 void drain(GfxRenderer* renderer, const size_t maxEvents) {
+  if (maxEvents > 0) {
+    for (const auto& sub : subscribers) {
+      if (sub.readwiseBooks) {
+        readwisebooks::poll();
+        break;
+      }
+    }
+  }
   size_t budget = maxEvents;
   for (const auto& sub : subscribers) {
     if (budget == 0) break;

@@ -62,3 +62,29 @@ for required in (
 ):
     if required not in text:
         raise RuntimeError("SecureNet authenticated TLS checks are missing")
+
+# A preconnected non-idempotent POST must not be transparently repeated when
+# its response is lost. Existing SDK users retain their previous retry policy.
+header = source.parent.parent / "include/SecureHttpClient.h"
+http = header.read_text()
+retry_marker = "void setRetryStaleConnections(bool retry)"
+if retry_marker not in http:
+    replacements = [
+        ("  void setReuse(bool reuse) { _reuse = reuse; }",
+         "  void setReuse(bool reuse) { _reuse = reuse; }\n"
+         "  void setRetryStaleConnections(bool retry) { _retryStaleConnections = retry; }"),
+        ("  bool _reuse = true;", "  bool _reuse = true;\n  bool _retryStaleConnections = true;"),
+        ("if (reusing && attempt == 0) continue;", "if (_retryStaleConnections && reusing && attempt == 0) continue;"),
+        ("if (reusing && attempt == 0 && !_aborted) continue;",
+         "if (_retryStaleConnections && reusing && attempt == 0 && !_aborted) continue;"),
+    ]
+    for old, new in replacements:
+        if http.count(old) != 1:
+            raise RuntimeError("SecureNet retry patch no longer matches; inspect the SDK before building")
+        http = http.replace(old, new, 1)
+    header.write_text(http)
+    print("Patched SecureNet optional stale-connection retry")
+if (http.count("if (_retryStaleConnections && reusing && attempt == 0") != 2
+        or "if (reusing && attempt == 0" in http
+        or "bool _retryStaleConnections = true;" not in http):
+    raise RuntimeError("SecureNet explicit retry policy is missing")

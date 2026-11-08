@@ -1,3 +1,6 @@
+> This feature branch adds optional [Almanac → Readwise Books session sync](docs/READWISE-BOOKS.md).
+> It requires firmware 2.0.0-highlights.5 and one-time USB setup; device verification is pending.
+
 # CrossPoint Highlighting — Xteink X4 Pro
 
 A personal, public branch of [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader), based on the stable **2.0.0** release, with offline five-page captures extended to whole paragraphs, automatic Readwise highlight uploads, and the Almanac reading-time plugin.

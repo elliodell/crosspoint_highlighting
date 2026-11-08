@@ -1,9 +1,10 @@
 # Reading time with Almanac
 
-This fork includes **Almanac: Reading Stats 0.4.0**, an existing CrossPoint
+This feature branch includes **Almanac + Readwise Books 0.4.0-readwise.1**, based on the existing CrossPoint
 plugin that shows reading time, streaks and book progress on the reader and
 at [almanac.im](https://almanac.im). It uses the reading-session support already
-present in the CrossPoint 2.0.0 base. No separate firmware patch is required.
+present in the CrossPoint 2.0.0 base. The Almanac service itself needs no extra firmware patch. The optional
+[Readwise Books mirror](READWISE-BOOKS.md) requires this branch’s native adapter.
 
 Almanac is a beta service maintained by BART!. Its upstream author reports
 testing on the Xteink X3. This bundle uses the same plugin interface on the
@@ -26,14 +27,13 @@ and remaining limits.
    a restart ensures its reading-session subscription is loaded.
 4. Connect the reader to your Wi-Fi once so it remembers the network and gets
    a trustworthy clock. Reading sessions need a valid clock to be recorded.
-5. Open **Home → Plugins → Almanac: Reading Stats → Sign in**. Scan the QR code
+5. Open **Home → Plugins → Almanac + Readwise Books → Sign in**. Scan the QR code
    with your phone and confirm the displayed code. If the reader says **Not signed
    in yet**, tap that message (away from the back arrow) to start sign-in. Keep
    the sign-in screen open until the reader shows your stats. No email/password
    account is required. The phone browser used for confirmation retains access
    to your stats.
-6. Read normally. After reading, leave the book and open **Almanac: Reading
-   Stats** to upload pending sessions and see your totals. Putting the reader
+6. Read normally. After reading, leave the book and open **Almanac + Readwise Books** to upload pending sessions and see your totals. Putting the reader
    to sleep also attempts an upload on the last connected Wi-Fi network.
 
 If you prefer Plugin Hub, you can instead enable plugins and install
@@ -113,13 +113,12 @@ battery impact still need separate checks on the X4 Pro.
 
 ## Source and maintenance
 
-The bundle is unchanged from upstream **v0.4.0**, commit
+The bundle is based on upstream **v0.4.0**, commit
 `360a4cd29a46115f0db9cb26a07f3c2b16e9e76e`, under the MIT license.
 [Source and file hashes](../sd-card/plugins/almanac/SOURCE.md) are included.
 
-Almanac's URLs and authentication stay in the SD-card plugin. The firmware uses
-its existing generic [plugin events](plugin-events.md), so the bundle adds no
-compiled firmware code or new background task. The author controls the online
+Almanac’s URLs and authentication stay in the SD-card plugin. Its normal uploads use
+its existing generic [plugin events](plugin-events.md), and the optional Books mirror uses the adapter documented above. No new background task is created. The author controls the online
 service; future service changes may require updating the plugin through Plugin
 Hub or copying a newer release to the SD card. No hardware measurements of its
 battery or timing impact are included in this fork.

@@ -9,8 +9,10 @@ This directory bundles **Almanac: Reading Stats 0.4.0** by BART! under the
 - Source directory: `almanac.crosspoint-plugin/` at that commit.
 - `LICENSE` comes from the root of the same upstream commit.
 
-The four plugin files and license are unchanged. This source notice was added
-by the CrossPoint Highlighting fork. Git blob IDs of the original files:
+The downstream Readwise Books edition changes the manifest, device manifest,
+and README. The license and DETAILS.md remain upstream. Its source lives at
+https://github.com/elliodell/almanac-readwise/tree/feat/readwise-books-sync .
+Git blob IDs below identify the original upstream files:
 
 | File | Git blob SHA-1 |
 | --- | --- |
